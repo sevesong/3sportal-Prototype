@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>AF InCost API 接入 - 原型</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #f5f6fa; color: #333; }
+.nav { background: #2c3e50; color: #fff; padding: 12px 24px; display: flex; align-items: center; gap: 24px; }
+.nav h1 { font-size: 16px; font-weight: 500; }
+.nav a { color: #bdc3c7; text-decoration: none; font-size: 14px; cursor: pointer; padding: 4px 12px; border-radius: 4px; }
+.nav a.active { color: #fff; background: #3498db; }
+.container { max-width: 1200px; margin: 24px auto; padding: 0 24px; }
+.card { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 24px; margin-bottom: 24px; }
+.card h2 { font-size: 16px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #3498db; }
+.card h3 { font-size: 14px; margin: 16px 0 8px; color: #555; }
+.form-row { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+.form-row label { width: 140px; font-size: 13px; color: #666; text-align: right; flex-shrink: 0; }
+.form-row input[type="text"], .form-row select { padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; width: 300px; }
+.form-row input[type="text"]:focus, .form-row select:focus { border-color: #3498db; outline: none; }
+.checkbox-row { display: flex; align-items: center; gap: 8px; margin: 12px 0 12px 156px; }
+.checkbox-row input[type="checkbox"] { width: 16px; height: 16px; }
+.checkbox-row label { font-size: 13px; color: #333; }
+.checkbox-row .hint { font-size: 12px; color: #999; margin-left: 8px; }
+.btn { padding: 8px 20px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
+.btn-primary { background: #3498db; color: #fff; }
+.btn-primary:hover { background: #2980b9; }
+.btn-default { background: #ecf0f1; color: #333; }
+.btn-default:hover { background: #ddd; }
+.btn-group { margin: 20px 0 0 156px; display: flex; gap: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: #f8f9fa; padding: 10px 12px; text-align: left; border-bottom: 2px solid #dee2e6; font-weight: 600; color: #555; }
+td { padding: 10px 12px; border-bottom: 1px solid #eee; }
+tr:hover td { background: #f8f9fa; }
+.status { padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+.status-success { background: #d4edda; color: #155724; }
+.status-failed { background: #f8d7da; color: #721c24; }
+.status-pending { background: #fff3cd; color: #856404; }
+.filter-bar { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+.filter-bar input, .filter-bar select { padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; }
+.filter-bar .btn { padding: 6px 16px; }
+.page { display: none; }
+.page.active { display: block; }
+.tag { display: inline-block; padding: 2px 6px; background: #e8f4fd; color: #2980b9; border-radius: 3px; font-size: 11px; }
+.summary-bar { display: flex; gap: 24px; margin-bottom: 16px; }
+.summary-item { background: #f8f9fa; padding: 16px 24px; border-radius: 8px; flex: 1; text-align: center; }
+.summary-item .num { font-size: 24px; font-weight: 700; color: #2c3e50; }
+.summary-item .label { font-size: 12px; color: #999; margin-top: 4px; }
+.tooltip { position: relative; display: inline-block; cursor: help; color: #3498db; margin-left: 4px; }
+.tooltip:hover::after { content: attr(data-tip); position: absolute; left: 20px; top: -4px; background: #333; color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 12px; white-space: nowrap; z-index: 10; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <h1>3S 系统</h1>
+  <a onclick="showPage('offer')" class="active" id="nav-offer">Offer 编辑页</a>
+  <a onclick="showPage('log')" id="nav-log">InCost 上报日志</a>
+</div>
+
+<!-- ===== 页面1：Offer 编辑页 ===== -->
+<div class="page active" id="page-offer">
+<div class="container">
+
+<div class="card">
+  <h2>Offer 基本信息</h2>
+  <div class="form-row">
+    <label>Offer ID：</label>
+    <input type="text" value="3121294" readonly style="background:#f5f5f5">
+  </div>
+  <div class="form-row">
+    <label>Offer Name：</label>
+    <input type="text" value="FreeCash-US-AOS">
+  </div>
+  <div class="form-row">
+    <label>Package Name：</label>
+    <input type="text" value="com.freecash.android">
+  </div>
+  <div class="form-row">
+    <label>Advertiser：</label>
+    <input type="text" value="FreeCash" readonly style="background:#f5f5f5">
+  </div>
+  <div class="form-row">
+    <label>MMP：</label>
+    <select>
+      <option selected>AppsFlyer</option>
+      <option>Adjust</option>
+      <option>Branch</option>
+    </select>
+  </div>
+  <div class="form-row">
+    <label>Offer Type：</label>
+    <select>
+      <option selected>Direct</option>
+      <option>ADN</option>
+    </select>
+  </div>
+</div>
+
+<div class="card">
+  <h2>InCost API 配置 <span class="tag">新增</span></h2>
+
+  <div class="checkbox-row">
+    <input type="checkbox" id="incost-toggle" checked onchange="toggleIncost()">
+    <label for="incost-toggle"><strong>InCost Data Push</strong></label>
+    <span class="hint">勾选后该 Offer 的成本数据将通过 InCost API 上报至 AppsFlyer</span>
+    <span class="tooltip" data-tip="仅 AF 监控的 Direct Offer 可勾选。连续 3 次上报失败将自动取消。">?</span>
+  </div>
+
+  <div id="incost-config">
+    <div class="form-row">
+      <label>Media Source：</label>
+      <input type="text" value="mobvista_int" readonly style="background:#f5f5f5">
+      <span class="tooltip" data-tip="自动取 MMP Partner 名称">?</span>
+    </div>
+    <div class="form-row">
+      <label>Agency (af_prt)：</label>
+      <input type="text" value="Mobvista">
+      <span class="tooltip" data-tip="代理名称，Agency 场景必传">?</span>
+    </div>
+    <div class="form-row">
+      <label>Currency：</label>
+      <select><option selected>USD</option><option>EUR</option><option>CNY</option></select>
+    </div>
+    <div class="form-row">
+      <label>Cost 计算方式：</label>
+      <select>
+        <option selected>adv_real_price × install</option>
+        <option>channel_payout × install</option>
+        <option>自定义金额</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>上报状态：</label>
+      <span class="status status-success">正常</span>
+      <span style="font-size:12px;color:#999;margin-left:8px">最近上报：2026-03-16 12:00 UTC</span>
+    </div>
+  </div>
+
+  <div class="btn-group">
+    <button class="btn btn-primary" onclick="alert('保存成功！InCost 配置已更新。')">保存</button>
+    <button class="btn btn-default">取消</button>
+  </div>
+</div>
+
+</div>
+</div>
+
+<!-- ===== 页面2：上报日志 ===== -->
+<div class="page" id="page-log">
+<div class="container">
+
+<div class="card">
+  <h2>InCost 上报日志</h2>
+
+  <div class="summary-bar">
+    <div class="summary-item">
+      <div class="num">1,247</div>
+      <div class="label">今日上报次数</div>
+    </div>
+    <div class="summary-item">
+      <div class="num" style="color:#27ae60">1,198</div>
+      <div class="label">成功</div>
+    </div>
+    <div class="summary-item">
+      <div class="num" style="color:#e74c3c">12</div>
+      <div class="label">失败</div>
+    </div>
+    <div class="summary-item">
+      <div class="num" style="color:#f39c12">37</div>
+      <div class="label">处理中</div>
+    </div>
+    <div class="summary-item">
+      <div class="num">$45,892.50</div>
+      <div class="label">今日上报总金额</div>
+    </div>
+  </div>
+
+  <div class="filter-bar">
+    <input type="date" value="2026-03-16">
+    <span>至</span>
+    <input type="date" value="2026-03-16">
+    <input type="text" placeholder="App ID / Package">
+    <select>
+      <option value="">全部状态</option>
+      <option>success</option>
+      <option>failed</option>
+      <option>pending</option>
+    </select>
+    <button class="btn btn-primary">查询</button>
+    <button class="btn btn-default">导出</button>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>请求时间</th>
+        <th>App ID</th>
+        <th>Media Source</th>
+        <th>Agency</th>
+        <th>日期范围</th>
+        <th>记录数</th>
+        <th>总金额</th>
+        <th>Job ID</th>
+        <th>状态</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>2026-03-16 20:00:05</td>
+        <td>com.freecash.android</td>
+        <td>mobvista_int</td>
+        <td>Mobvista</td>
+        <td>03-15 ~ 03-16</td>
+        <td>156</td>
+        <td>$3,245.80</td>
+        <td>job_a1b2c3</td>
+        <td><span class="status status-success">success</span></td>
+        <td><a href="#" style="color:#3498db;font-size:12px">详情</a></td>
+      </tr>
+      <tr>
+        <td>2026-03-16 18:00:03</td>
+        <td>com.freecash.android</td>
+        <td>mobvista_int</td>
+        <td>Mobvista</td>
+        <td>03-15 ~ 03-16</td>
+        <td>142</td>
+        <td>$2,987.40</td>
+        <td>job_d4e5f6</td>
+        <td><span class="status status-success">success</span></td>
+        <td><a href="#" style="color:#3498db;font-size:12px">详情</a></td>
+      </tr>
+      <tr>
+        <td>2026-03-16 16:00:02</td>
+        <td>id123456789</td>
+        <td>mobvista_int</td>
+        <td>Mobvista</td>
+        <td>03-15 ~ 03-16</td>
+        <td>89</td>
+        <td>$1,456.20</td>
+        <td>job_g7h8i9</td>
+        <td><span class="status status-pending">pending</span></td>
+        <td><a href="#" style="color:#3498db;font-size:12px">详情</a></td>
+      </tr>
+      <tr>
+        <td>2026-03-16 14:00:01</td>
+        <td>com.game.example</td>
+        <td>mobvista_int</td>
+        <td>Mobvista</td>
+        <td>03-15 ~ 03-16</td>
+        <td>203</td>
+        <td>$5,120.00</td>
+        <td>job_j1k2l3</td>
+        <td><span class="status status-success">success</span></td>
+        <td><a href="#" style="color:#3498db;font-size:12px">详情</a></td>
+      </tr>
+      <tr>
+        <td>2026-03-16 12:00:04</td>
+        <td>com.shopping.app</td>
+        <td>mobvista_int</td>
+        <td>Mobvista</td>
+        <td>03-15 ~ 03-16</td>
+        <td>67</td>
+        <td>$892.30</td>
+        <td>job_m4n5o6</td>
+        <td><span class="status status-failed">failed</span></td>
+        <td><a href="#" style="color:#e74c3c;font-size:12px">重试</a></td>
+      </tr>
+      <tr>
+        <td>2026-03-16 08:00:12</td>
+        <td>com.freecash.android</td>
+        <td>mobvista_int</td>
+        <td>Mobvista</td>
+        <td>03-10 ~ 03-16</td>
+        <td>1,024</td>
+        <td>$32,190.80</td>
+        <td>job_p7q8r9</td>
+        <td><span class="status status-success">success</span></td>
+        <td><a href="#" style="color:#3498db;font-size:12px">详情</a></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+</div>
+</div>
+
+<script>
+function showPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.getElementById('nav-' + page).classList.add('active');
+}
+function toggleIncost() {
+  var config = document.getElementById('incost-config');
+  config.style.display = document.getElementById('incost-toggle').checked ? 'block' : 'none';
+}
+</script>
+
+</body>
+</html>
