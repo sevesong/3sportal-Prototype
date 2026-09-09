@@ -31,6 +31,17 @@ a{color:#409eff;text-decoration:none;cursor:pointer}
 .fi{display:flex;gap:12px;margin-bottom:14px;align-items:flex-start}
 .fi>label{flex:0 0 150px;text-align:right;color:#606266;padding-top:5px;font-size:13px}
 .fi>.c{flex:1;min-width:0}
+/* 悬浮注释：ⓘ 图标 + hover 气泡（文档要求注释不直接展示，鼠标悬浮提示） */
+.ii{display:inline-block;position:relative;width:14px;height:14px;line-height:14px;text-align:center;
+  border-radius:50%;background:#c0c4cc;color:#fff;font-size:10px;font-style:normal;cursor:help;
+  vertical-align:middle;margin-left:4px;flex:0 0 auto}
+.ii:hover{background:#409eff}
+.ii:after{content:attr(data-tip);position:absolute;left:50%;bottom:150%;transform:translateX(-50%);
+  display:none;white-space:pre-line;width:max-content;max-width:300px;text-align:left;
+  background:#303133;color:#fff;font-size:12px;line-height:1.6;padding:7px 10px;border-radius:4px;
+  box-shadow:0 2px 12px rgba(0,0,0,.2);z-index:400;pointer-events:none}
+.ii:hover:after{display:block}
+.ii.rt:after{left:auto;right:0;transform:none}
 .tip{font-size:12px;color:#909399;display:flex;gap:5px;align-items:flex-start;margin-top:5px}
 .tip:before{content:"ⓘ";color:#409eff;flex:0 0 auto}
 .tip.warn:before{content:"⚠";color:#e6a23c}
@@ -162,16 +173,12 @@ code{background:#f4f4f5;padding:1px 5px;border-radius:3px;font-size:12px;color:#
 <div class="hd">
   <h1>Delivery Strategy Management</h1>
   <div class="ctx" id="ctx"></div>
+  <a class="btn sm" style="margin-left:auto" onclick="toast('原型示意：跳转旧版 Delivery 页面')">进入旧页面</a>
 </div>
 
 <div class="wrap">
   <div class="nav" id="nav"></div>
   <div class="main" id="main"></div>
-</div>
-
-<div class="foot">
-  <span class="dirty" id="dirty"></span>
-  <button class="btn pri" onclick="openDiff()">Save</button>
 </div>
 
 
@@ -187,9 +194,19 @@ const SCOPE={0:'Offer',1:'分组'};
 const CALIBER={sum:'总值',avg:'均值',both:'每x的值'};
 const SYMBOL={gt:'大于',lt:'小于',gte:'大于等于',lte:'小于等于'};
 const UNION={and:'且',or:'或'};
-const PKG_TYPE={2:'Not Banding',1:'Banding',0:'None'};
+const PKG_TYPE={2:'Not Banding',1:'Banding'};/* 删除 None 枚举，存量刷为 Not Banding（文档 3.5.3） */
 const PKG_CATS=['游戏','工具','社交','娱乐','购物','金融','教育','新闻','摄影','生活'];
-const PKG_TIP={2:'包名与Mob号没有绑定关系',1:'包名与Mob号有绑定关系，一个包可绑定多个Mob号，一个Mob号只能绑定一个包名',0:'走旧版的透传逻辑，新Offer已不适用，如遇到透传包名为空请选择另外两个模式'};
+const PKG_TIP={2:'随机取用包名上报',1:'包名与Mob号有绑定关系，一个Mob号只能取用一个包名上报'};
+/* 包名和素材透传：适用场景（文档 3.5.2） */
+const TR_SCENE='包名透传：开启后，将取用对应geo包名按日活比例上报流量\n素材透传：开启后，将取用offer中素材均匀上报流量';
+/* 支持包名透传的 Geo（原型示意，实际由产研维护） */
+const PKG_GEOS=['ID','BR','IN','MX','PH','VN','TH'];
+/* 未生效提示语（文档 3.5.2 / 3.5.3 校验） */
+const PKG_INVALID={
+ geo_multi:'当前仅支持单Target Geo的包名透传，请修改Offer定向设置',
+ geo_unsupported:'非支持包名透传的Target Geo，请联系产研添加',
+ no_marco:'tracking link中无{@info.mb_package_v3()@}占位符，无法正确透传包名'};
+const CRE_INVALID='tracking link中无{@info.creative_name3@}或{@info.theme_name3@}占位符，无法正确透传素材';
 /* 指标列表：is_rate 决定阈值上限 100 并显示 % */
 const INDEXES=[
  {id:'click',name:'Click',is_rate:0},{id:'install',name:'Install',is_rate:0},
@@ -207,14 +224,45 @@ const ACTIONS=[
  {k:'delete_mob',   label:'指定删Mob',  needDim:'mob'},
  {k:'notification', label:'发送通知'},
  {k:'block_click',  label:'Block点击',  needChn:true},
- {k:'cancel_block_click',label:'取消Block点击', needChn:true}
+ {k:'cancel_block_click',label:'取消Block点击', needChn:true},
+ {k:'stop_channel', label:'掐停Channel', needChn:true}
 ];
+/* 执行动作注释（文档 3.7.3，鼠标悬浮展示） */
+const ACT_TIP={
+ stop_channel:'掐停Channel：在命中规则/定时执行时将该Channel掐停，可用于自动掐停爆Reject chn',
+ block_click:'Block点击：在命中规则/定时执行时把配置Channel点击全部lose掉，可用于外部渠道未放量/出转时暂时停掉Q，避免CF',
+ cancel_block_click:'取消Block点击：在命中设置规则/定时执行时把配置Channel点击取消lose，可用于取消Block状态，恢复Q送量',
+ change_pid:'更换PID：此模式会在每次执行动作时顺序换用列表中的PID上报流量',
+ disable_pid:'禁用PID：此模式随机取用列表中所有PID均匀上报流量，并在命中上方规则时禁用对应PID',
+ change_c:'更换C参：命中规则/定时执行时将C参占位符替换为年月日时或年月日或无序数值',
+ change_mob:'全量换Mob：命中规则/定时执行时将Mob号全量替换为新',
+ change_appoint_mob:'指定换Mob：命中规则时将该Mob号替换为新',
+ delete_mob:'指定删Mob：命中规则时将该Mob号删除',
+ notification:'发送通知：命中规则/定时执行时向配置的通知渠道推送执行消息'};
+/* 更换C参 macro（文档 3.7.3 新增无序字符 macro） */
+const CHANGE_C_MARCOS=[
+ {k:'ymdh',marco:'{@info.change_c()@}',label:'年月日时',eg:'如 2026090212'},
+ {k:'ymd', marco:'{@info.change_c_ymd()@}',label:'年月日',eg:'如 20260902'},
+ {k:'rand',marco:'{@info.change_c_rand()@}',label:'无序数值',eg:'本次新增，如 8f3a1c'}];
+/* 自定义规则未生效提示语（文档 3.7.3 保存校验） */
+const RULE_INVALID={
+ change_c:'tracking link中无{@info.change_c()@}或{@info.change_c_ymd()@}或{@info.change_c_rand()@}占位符，无法正确执行更换C参动作',
+ disable_pid:'tracking link中无{@info.random_pid()@}占位符，无法正确执行禁用Pid动作',
+ change_pid:'tracking link中无{@info.change_pid()@}占位符，无法正确执行更换Pid动作'};
 const BT_SYNC=[{k:'sync_pid',label:'pid'},{k:'sync_c',label:'c参'},
   {k:'sync_mob',label:'mob号'},{k:'sync_rules',label:'自定义规则配置'}];
+/* 跨offer BT 同步内容说明（文档 3.4.3 分区三，文本平铺展示） */
+const BT_SYNC_TEXT=[
+ ['Mob号','Binding Offer会使用同一批Mob号'],
+ ['pid','若设置了pid更换规则，Binding Offer将同步执行'],
+ ['C参','若设置了C参更换规则，Binding Offer将同步执行'],
+ ['自定义规则','Binding Offer会使用同一批设置的规则']];
+/* 跨offer BT 适用场景（文档 3.4.2） */
+const BT_SCENE='开启后，绑定的offer将保持相同的Mob号传值、包名/素材透传、自定义规则配置';
 const CHANNELS=['chn_a1b2c3','chn_d4e5f6','chn_g7h8i9','chn_j1k2l3','chn_m4n5o6'];
 /* 执行动作分组：仅调整抽屉内的呈现分类，动作枚举与约束逻辑不变 */
 const ACT_GROUPS=[
- {key:'chn',name:'Offer / Channel',keys:['block_click','cancel_block_click']},
+ {key:'chn',name:'Offer / Channel',keys:['stop_channel','block_click','cancel_block_click']},
  {key:'pidc',name:'PID / C参',keys:['change_pid','disable_pid','change_c']},
  {key:'mob',name:'Mob号',keys:['change_mob','change_appoint_mob','delete_mob']}
 ];
@@ -222,6 +270,15 @@ const ACT_GENERAL=['notification'];
 
 /* ===== Alpha Config 常量：与 /dist3/tools/alphaConfig 线上一致 ===== */
 const ALPHA_TASK={1:'掐尾量',2:'Reject补发'};
+/* Alpha Config 适用场景（文档 3.6.2） */
+const ALPHA_SCENE={
+ 1:'取配置渠道已上报的流量来补发，用以转移尾量/提高CTI占比/补量',
+ 2:'收到配置Reject回传时，取配置渠道该过去x小时的流量来补发，用以转移Reject，避免感染'};
+/* Alpha Config 字段注释（文档 3.6.3，鼠标悬浮展示） */
+const ALPHA_TIP={
+ loop:'表示重复取{x}轮过去的点击，如配置3轮，6频次，则三条渠道同时取过去第6小时，第12小时，第18小时的点击上报',
+ scope:'表示取过去第{x}小时的点击，如配置6频次，当前12:00，则取6:00的点击上报',
+ range:'表示取该Reject过去{x}小时内所有点击'};
 const ALPHA_DIST={1:'默认',2:'自定义'};
 const ALPHA_DIST_TIP={1:{1:'二部渠道',2:''},2:{1:'二部渠道，Alpha以及NTD渠道',2:''}};
 /* Reject Reason 选项：线上取 autocomplete(reject_reason, third_party=Adjust,appsflyer) */
@@ -241,6 +298,9 @@ let uid=1000;
 const form={
   offer_id:'3119805',
   offer_uuid:'offer_test',
+  /* 未生效校验数据源：Offer 定向 Geo 与 tracking link 占位符 */
+  offer_target_geo:['ID'],
+  offer_tracking_link:'https://track.mobvista.com/click?bundle={@info.mb_package_v3()@}&creative={@info.theme_name3@}&pid={@info.change_pid()@}&c={@info.change_c()@}',
   chnValueManagement:{
     uuid:'offer_test', mode:6,
     special_channel_setting:[
@@ -285,7 +345,7 @@ const form={
        notification:1,block_click:0,cancel_block_click:0,block_channel_uuid:'',disabled:false},
       {id:++uid,enabled:1,rule_type:'index',periods:1,unit:'day',union_condition:'and',
        rule_items:[{dimension:'channel',scope:1,periods:1,unit:'day',index:'roi',caliber:'avg',symbol:'lt',threshold:80,channel_uuid:'chn_a1b2c3'}],
-       change_pid:0,disable_pid:0,change_c:0,change_mob:0,change_appoint_mob:0,delete_mob:0,
+       change_pid:0,disable_pid:0,change_c:0,change_mob:0,change_appoint_mob:0,delete_mob:0,stop_channel:0,
        notification:0,block_click:1,cancel_block_click:0,block_channel_uuid:'chn_a1b2c3',disabled:false}
     ],
     repeat_check:{check_pid:1,check_pid_hour:6,check_c:0,check_c_hour:null,disabled:false},
@@ -309,6 +369,10 @@ const form={
     ]
   }
 };
+/* 存量数据处理：包名透传模式为 None 的数据统一刷为 Not Banding 默认配置（文档 3.5.3） */
+if(form.transparency.post_package_type!==1&&form.transparency.post_package_type!==2){
+  form.transparency.post_package_type=2;form.transparency.no_banding_rate=20;
+}
 const snapshot=JSON.parse(JSON.stringify(form));
 let curSec='chnValueManagement';
 
@@ -340,6 +404,8 @@ function actState(rule,a){
     if(rule.rule_type!=='index'||!dims.includes('mob')) return{dis:1,why:''};
     if(rule.change_appoint_mob===1) return{dis:1,why:''};
   }
+  /* 掐停Channel：指标规则仅当检查对象选中 channel 时可勾选；定时规则不限制（文档 3.7.3） */
+  if(a.k==='stop_channel'&&rule.rule_type==='index'&&!dims.includes('channel')) return{dis:1,why:''};
   if(a.k==='block_click'&&rule.cancel_block_click===1) return{dis:1,why:''};
   if(a.k==='cancel_block_click'&&rule.block_click===1) return{dis:1,why:''};
   return{dis:0,why:''};
@@ -380,6 +446,7 @@ function ruleBlockers(r){
     });
   }
   if((r.block_click===1||r.cancel_block_click===1)&&!r.block_channel_uuid) e.push('');
+  if(r.stop_channel===1&&r.rule_type==='timing'&&!r.block_channel_uuid) e.push('');
   return e;
 }
 /* 提示性问题：规则本身合法，但依赖当前环境已失效 —— 计入「设置无效」，不拦保存 */
@@ -398,7 +465,15 @@ function ruleWarns(r){
   });
   return e;
 }
-function ruleErrors(r){return ruleBlockers(r).concat(ruleWarns(r));}
+/* 占位符未生效校验（文档 3.7.3）：不拦保存，仅置未生效 */
+function ruleMarcoWarns(r){
+  const L=form.offer_tracking_link||'',e=[];
+  if(r.change_c===1&&!CHANGE_C_MARCOS.some(x=>L.indexOf(x.marco)>=0)) e.push(RULE_INVALID.change_c);
+  if(r.disable_pid===1&&L.indexOf('{@info.random_pid()@}')<0) e.push(RULE_INVALID.disable_pid);
+  if(r.change_pid===1&&L.indexOf('{@info.change_pid()@}')<0) e.push(RULE_INVALID.change_pid);
+  return e;
+}
+function ruleErrors(r){return ruleBlockers(r).concat(ruleWarns(r)).concat(ruleMarcoWarns(r));}
 
 /* ===== 渲染：上下文 + 导航 ===== */
 const SECS=[
@@ -408,44 +483,32 @@ const SECS=[
  {hash:'alphaConfig',name:'Alpha Config',always:1},
  {hash:'aiLayerBreakthrough',name:'自定义规则配置',always:1}
 ];
+/* 摘要标签（文档 3.2）：只暴露「当前生效配置 / 生效状态」，不展开明细 */
 function badge(s){
-  const c=form.chnValueManagement,a=form.aiLayerBreakthrough;
-  if(s.hash==='chnValueManagement'){
-    if(c.mode===6) return{t:'Manually Subid · '+lines(c.subidListStr).length+' 个 Mob',cls:'ok'};
-    return{t:MODE[c.mode]+' · '+c.special_channel_setting.length+' 条特殊规则',cls:'ok'};
-  }
+  const c=form.chnValueManagement;
+  /* 1. BT Mob号设置：展示当前生效配置项 */
+  if(s.hash==='chnValueManagement') return{t:MODE[c.mode],cls:'ok'};
+  /* 2. 跨offer BT：未开启 / 生效中 */
   if(s.hash==='crossOfferBt'){
-    if(!isM6()) return{t:'仅 Manually Subid 可用',cls:''};
-    if(form.crossOfferBt.open_cross_bt!==1) return{t:'未开启',cls:''};
-    const sy=BT_SYNC.filter(x=>form.crossOfferBt[x.k]===1).map(x=>x.k==='sync_rules'?'规则':x.label);
-    return{t:'已绑定 '+form.crossOfferBt.bindListArr.length+' 个 · 同步 '+(sy.join('/')||'无'),cls:'ok'};
+    if(!isM6()||form.crossOfferBt.open_cross_bt!==1) return{t:'未开启',cls:''};
+    return{t:'生效中',cls:'ok'};
   }
+  /* 3. 包名和素材透传：未开启 / 包名透传生效中 · 素材透传生效中 */
   if(s.hash==='transparency'){
-    if(!isM6()) return{t:'仅 Manually Subid 可用',cls:''};
-    const t=form.transparency;
-    if(t.post_package_status!=='enabled') return{t:'未开启',cls:''};
-    const ex=t.post_package_type===2
-      ? (t.no_banding_rate==null||t.no_banding_rate===''?'比例未填':'比例 '+t.no_banding_rate+'%')
-      : (t.post_package_type===1?'E等级 '+(t.open_level_e===1?'开启':'未开启'):'');
-    return{t:PKG_TYPE[t.post_package_type]+(ex?' · '+ex:'')
-      +(t.post_creative_status==='enabled'?' · 素材透传开启':''),cls:'ok'};
+    const t=form.transparency,on=[];
+    if(isM6()&&t.post_package_status==='enabled') on.push('包名透传生效中');
+    if(isM6()&&t.post_package_status==='enabled'&&t.post_creative_status==='enabled') on.push('素材透传生效中');
+    return on.length?{t:on.join(' · '),cls:'ok'}:{t:'未开启',cls:''};
   }
+  /* 4. Alpha Config：未开启 / 掐尾量生效中 · Reject补发生效中 */
   if(s.hash==='alphaConfig'){
-    const a=form.alphaConfig,ks=[1,2].filter(k=>a[k]);
-    if(!ks.length) return{t:'未配置',cls:''};
-    const parts=ks.map(k=>ALPHA_TASK[k]+' '+(k===1?'每'+(a[k].scope==null?'—':a[k].scope)+'h':(a[k].scope==null?'—':a[k].scope)+'h'));
-    const bad=ks.filter(k=>a[k].status==='异常').length;
-    return{t:parts.join(' · ')+(bad?' · '+bad+' 项异常':''),cls:bad?'err':'ok'};
+    const a=form.alphaConfig,on=[1,2].filter(k=>a[k]).map(k=>ALPHA_TASK[k]+'生效中');
+    return on.length?{t:on.join(' · '),cls:'ok'}:{t:'未开启',cls:''};
   }
-  const on=a.custom_rules.filter(r=>r.enabled),off=a.custom_rules.length-on.length;
-  const bad=on.filter(r=>ruleErrors(r).length).length,dz=deadRules().length;
-  const suf=off?' · '+off+' 条已停用':'';
-  if(bad) return{t:on.length+' 条执行中 · '+bad+' 条设置无效'+suf,cls:'err'};
-  if(dz) return{t:on.length+' 条执行中 · '+dz+' 条可能被遮挡'+suf,cls:'warn'};
-  if(!a.custom_rules.length) return{t:'未配置',cls:''};
-  return{t:on.length+' 条规则执行中'+suf,cls:'ok'};
+  /* 5. 自定义规则配置：无生效规则 / N 条规则生效中 */
+  const n=form.aiLayerBreakthrough.custom_rules.filter(r=>r.enabled).length;
+  return n?{t:n+' 条规则生效中',cls:'ok'}:{t:'无生效规则',cls:''};
 }
-/* 遮挡检测：同类型 index 规则，上游条件是下游的子集则下游永不触发 */
 function deadRules(){
   const rs=form.aiLayerBreakthrough.custom_rules,out=[];
   const key=i=>[i.dimension,i.scope,i.index,i.caliber,i.symbol,i.periods,i.unit].join('|');
@@ -468,13 +531,9 @@ function deadRules(){
   return out;
 }
 function renderCtx(){
-  const c=form.chnValueManagement;
   $('#ctx').innerHTML=
    '<span class="kv">offer_id <b>'+form.offer_id+'</b></span>'+
-   '<span class="kv">Offer uuid <b class="mono">'+esc(form.offer_uuid)+'</b></span>'+
-   '<span class="kv">传值模式 <b>'+MODE[c.mode]+'</b></span>'+
-   (form.crossOfferBt.open_cross_bt===1?'<span class="tag g">跨Offer BT 已开启</span>':'')+
-   (c.disabledSubidEdit?'<span class="tag o">Subid 由分组同步，不可编辑</span>':'');
+   '<span class="kv">Offer uuid <b class="mono">'+esc(form.offer_uuid)+'</b></span>';
 }
 function renderNav(){
   $('#nav').innerHTML=SECS.map(s=>{
@@ -519,6 +578,20 @@ function yn(v){return v?'<span class="tag g">开启</span>':'<span class="tag gr
 function few(arr,n){n=n||2;return arr.length?'<span class="mono gray small">'+arr.slice(0,n).map(esc).join('，')+(arr.length>n?' … 共 '+arr.length+' 个':'')+'</span>':'';}
 function il(items){return '<div class="il">'+items.filter(Boolean)
   .map(x=>'<span class="it">'+(x[0]?'<span class="k">'+esc(x[0])+'</span>':'')+'<span class="v">'+x[1]+'</span></span>').join('<span class="sp"></span>')+'</div>';}
+const SAVED='保存成功，已生效';
+/* BT Mob号设置：各配置项适用场景（文档 3.2.2 适用场景列 / 3.2.3 分区一注释） */
+const MODE_SCENE={
+ 6:'offer下所有流量均匀取用设置的mob号上报',
+ 2:'对接的不同channel流量分别固定取用一个mob号上报',
+ 1:'对接的不同channel下subid流量分别固定取用一个mob号上报'};
+/* Special Channel Setting 相关注释（文档 3.2.3 Add Rule） */
+const SCS_TIP='针对指定channel/subid特殊设置规则';
+const SCS_VT_TIP={
+ 1:'针对单独配置的Channel，采用channel subid模式，channel下每个subid固定取用一个mob号上报',
+ 2:'针对单独配置的Channel，采用channel id模式，每个channel固定取用一个mob号上报',
+ 6:'针对单独配置的Channel/subid，手动设置mob号上报'};
+/* 悬浮注释助手：注释不直接展示，鼠标悬浮 ⓘ 提示 */
+function ii(text,cls){return '<i class="ii'+(cls?' '+cls:'')+'" data-tip="'+esc(text)+'">i</i>';}
 const SCENE_TBD='<span class="gray small">待补充</span>';
 function cfgTable(rows,head,w){
   return '<table class="t"><thead><tr>'
@@ -526,7 +599,7 @@ function cfgTable(rows,head,w){
    +'<th style="width:120px">适用场景</th><th>当前配置</th>'
    +'<th style="width:104px">状态</th><th style="width:236px">操作</th>'
    +'</tr></thead><tbody>'
-   +rows.filter(Boolean).map(r=>'<tr><td>'+r[0]+'</td><td>'+SCENE_TBD+'</td><td>'+r[1]+'</td><td>'+(r[2]||'<span class="gray">—</span>')+'</td><td>'+(r[3]||'')+'</td></tr>').join('')
+   +rows.filter(Boolean).map(r=>'<tr><td>'+r[0]+'</td><td class="small gray">'+(r[4]||SCENE_TBD)+'</td><td>'+r[1]+'</td><td>'+(r[2]||'<span class="gray">—</span>')+'</td><td>'+(r[3]||'')+'</td></tr>').join('')
    +'</tbody></table>';
 }
 function swCell(label,on,fn,dis,title){
@@ -539,40 +612,22 @@ const ST_ON='<span class="tag g">生效中</span>',ST_OFF='<span class="tag gray
 function ebtn(m,label){return '<button class="btn sm" onclick="dwOpen(\''+m+'\')">'+(label||'编辑')+'</button>';}
 
 /* ===== 模块1：Channel Value Management（按配置模式分行） ===== */
+/* 模块1：BT Mob号设置 —— 列表仅展示当前生效的传值模式（文档 v1.2） */
 function cardChn(){
-  const c=form.chnValueManagement,rows=[];
-  const scs=c.special_channel_setting;
-  [6,1,2].forEach(m=>{
-    const active=c.mode===m;
-    let cfg,st;
-    if(m===6){
-      const L=lines(c.subidListStr);
-      cfg=active
-        ? '<b>'+L.length+'</b> 个 Mob 号 '+few(L)+(L.length>500?'<span class="tag r">超 500 上限</span>':'')
-        : '<span class="gray">Subid List '+lines(c.subidListStr).length+' 个（未启用）</span>';
-      st=active?(c.disabledSubidEdit?ST_GRP:ST_ON):ST_IDLE;
-    }else{
-      const own=active?scs:[];
-      const run=own.filter(r=>r.status==='running').length,pend=own.length-run;
-      cfg=active
-        ? (own.length?'Special Channel Setting <b>'+own.length+'</b> 条例外规则 '
-            +few(own.map(r=>(r.channel_rules||[]).join(' & ')),1)
-            +(run?'<span class="tag g">'+run+' 生效中</span>':'')+(pend?'<span class="tag o">'+pend+' 待提交</span>':'')
-          : '<span class="gray">尚未配置例外规则</span>')
-        : '<span class="gray">该模式下需配置 Special Channel Setting 例外规则</span>';
-      st=active?(own.length?ST_ON:ST_TODO):ST_IDLE;
-    }
-    let act=active
-      ? '<button class="btn sm" onclick="dwOpen(\'chn\')">编辑</button>'
-      : '<button class="btn sm" onclick="dwOpenMode('+m+')">切换到此模式</button>';
-    if(m===6&&active) act+=' <button class="btn sm" onclick="dwOpenMob(\'Update\')">替换Mob</button>'
-                          +' <button class="btn sm" onclick="dwOpenMob(\'Delete\')">删除Mob</button>';
-    rows.push(['<span class="'+(active?'':'gray')+'">'+MODE[m]+'</span>'
-      +(active?' <span class="tag g">当前</span>':''),cfg,st,act]);
-  });
+  const c=form.chnValueManagement,m=c.mode,scs=c.special_channel_setting;
+  let cfg;
+  if(m===6){
+    const L=lines(c.subidListStr);
+    cfg='<b>'+L.length+'</b> 个 Mob 号 '+few(L)+(L.length>500?'<span class="tag r">超 500 上限</span>':'');
+  }else{
+    cfg='特殊传值规则：'+(scs.length
+      ?'<span class="tag g">生效中</span><span class="small gray">共 '+scs.length+' 条</span>'
+      :'<span class="tag gray">未配置</span>');
+  }
+  const rows=[[MODE[m],cfg,scs.length||m===6?ST_ON:ST_TODO,
+    '<button class="btn sm" onclick="dwOpen(\'chn\')">编辑</button>',MODE_SCENE[m]]];
   return '<div class="card" id="chnValueManagement"><div class="h">BT Mob号设置<div class="r">'
-    +'<button class="btn sm" onclick="openRecord(\'chn\')">变更日志</button>'
-    +'<button class="btn pri sm" onclick="dwOpen(\'chn\')">编辑</button></div></div>'
+    +'<button class="btn sm" onclick="openRecord(\'chn\')">变更日志</button></div></div>'
     +'<div class="b">'+cfgTable(rows,'配置项','200px')+'</div></div>';
 }
 function dwOpenMode(m){dwOpen('chn');dwSetMode(m);}
@@ -588,17 +643,17 @@ function cardBt(){
     :(b.bindListArr.length
       ? b.bindListArr.map(x=>'<span class="tag'+(x.includes('|')?' o':'')+' mono">'+esc(x)+'</span>').join('')+cpIcon('form')
       : '<span class="tag r">未绑定</span>');
+  /* 同步内容固定为 pid、c参、mob号、自定义规则配置（文档 3.4.2） */
   const sync=!on?'<span class="gray">—</span>'
-    :(sy.length?sy.map(x=>'<span class="tag">'+x+'</span>').join(''):'<span class="tag r">无</span>');
-  const st=!on?ST_OFF:((!b.bindListArr.length||!sy.length)?ST_TODO:ST_ON);
+    :BT_SYNC.map(x=>'<span class="tag">'+x.label+'</span>').join('');
+  const st=!on?ST_OFF:(b.bindListArr.length?ST_ON:ST_TODO);
   return '<div class="card" id="crossOfferBt"><div class="h">跨offer BT<div class="r">'
-    +'<button class="btn sm" onclick="openRecord(\'bt\')">变更日志</button>'
-    +'<button class="btn pri sm" onclick="dwOpen(\'bt\')">编辑</button></div></div><div class="b">'
+    +'<button class="btn sm" onclick="openRecord(\'bt\')">变更日志</button></div></div><div class="b">'
     +'<table class="t"><thead><tr>'
     +'<th style="width:150px">配置项</th><th style="width:120px">适用场景</th>'
     +'<th style="width:72px">数量</th><th style="width:28%">Binding Offer List</th><th>跨Offer BT同步内容</th>'
     +'<th style="width:104px">status</th><th style="width:78px">操作</th></tr></thead><tbody>'
-    +'<tr><td>跨offer BT</td><td>'+SCENE_TBD+'</td><td>'+cnt+'</td><td>'+bind+'</td><td>'+sync+'</td>'
+    +'<tr><td>跨offer BT</td><td class="small gray">'+BT_SCENE+'</td><td>'+cnt+'</td><td>'+bind+'</td><td>'+sync+'</td>'
     +'<td>'+swCell(st,on,'toggleBtList()')+'</td>'
     +'<td><div class="opv"><a onclick="dwOpen(\'bt\')">编辑</a></div></td></tr>'
     +'</tbody></table></div></div>';
@@ -621,14 +676,21 @@ function cardTr(){
   const t=form.transparency,on=t.post_package_status==='enabled',dash='<span class="gray">—</span>';
   const badRate=t.post_package_type===2&&(t.no_banding_rate==null||t.no_banding_rate==='');
   const mode=on?'<span class="tag">'+PKG_TYPE[t.post_package_type]+'</span>':dash;
+  /* 品类：勾选所有品类时展示 all（文档 3.5.2） */
+  const cats=t.package_categories||[];
   const cate=on
-    ? ((t.package_categories&&t.package_categories.length)
-        ? t.package_categories.map(c=>'<span class="tag">'+esc(c)+'</span>').join('')
-        : '<span class="gray">不限</span>')
+    ? ((!cats.length||cats.length===PKG_CATS.length)
+        ? '<span class="tag">all</span>'
+        : cats.map(c=>'<span class="tag">'+esc(c)+'</span>').join(''))
     : dash;
   const ce=t.post_creative_status==='enabled';
-  const stPkg=on?(badRate?ST_TODO:ST_ON):ST_OFF;
-  const stCre=on?(ce?ST_ON:ST_OFF):ST_IDLE;
+  const pkgBad=pkgInvalid(t),creBad=creInvalid(t);
+  const stPkg=!on?ST_OFF
+    :(pkgBad.length?'<span class="tag r" title="'+esc(pkgBad.join('\n'))+'">未生效</span>'
+      :(badRate?ST_TODO:ST_ON));
+  const stCre=!on?ST_IDLE
+    :(!ce?ST_OFF
+      :(creBad.length?'<span class="tag r" title="'+esc(creBad.join('\n'))+'">未生效</span>':ST_ON));
   const st='<div class="stg">'
     +'<div class="sti"><span class="k">包名</span>'+stPkg
     +'<span class="sw'+(on?' on':'')+'" onclick="togglePkgList()"></span></div>'
@@ -641,13 +703,12 @@ function cardTr(){
     +'<th style="width:150px">模式</th><th>品类</th>'
     +'<th style="width:156px">状态</th><th style="width:88px">操作</th>'
     +'</tr></thead><tbody>'
-    +'<tr><td>包名 / 素材透传</td><td>'+SCENE_TBD+'</td><td>'+mode+'</td><td>'+cate+'</td>'
+    +'<tr><td>包名 / 素材透传</td><td class="small gray" style="white-space:pre-line">'+TR_SCENE+'</td><td>'+mode+'</td><td>'+cate+'</td>'
     +'<td>'+st+'</td>'
     +'<td><div class="opv"><a onclick="dwOpen(\'tr\')">编辑</a></div></td></tr>'
     +'</tbody></table>';
   return '<div class="card" id="transparency"><div class="h">包名和素材透传<div class="r">'
-    +'<button class="btn sm" onclick="openRecord(\'tr\')">变更日志</button>'
-    +'<button class="btn pri sm" onclick="dwOpen(\'tr\')">编辑</button></div></div>'
+    +'<button class="btn sm" onclick="openRecord(\'tr\')">变更日志</button></div></div>'
     +'<div class="b">'+tbl+'</div></div>';
 }
 
@@ -673,7 +734,7 @@ function alphaCfgText(t){
 }
 function alphaState(t){
   if(!t) return ST_IDLE;
-  return t.status==='异常'?'<span class="tag r">异常</span>':ST_ON;
+  return t.status==='异常'?'<span class="tag r">未生效</span>':ST_ON;
 }
 function alphaOps(k,t){
   if(!t) return '<div class="opv"><a onclick="alphaEdit('+k+',1)">配置</a></div>';
@@ -685,7 +746,7 @@ function cardAlpha(){
   const a=form.alphaConfig;
   const rows=[1,2].map(k=>'<tr class="'+(a[k]?'':'dim')+'">'
     +'<td>'+ALPHA_TASK[k]+'</td>'
-    +'<td>'+SCENE_TBD+'</td>'
+    +'<td class="small gray">'+ALPHA_SCENE[k]+'</td>'
     +'<td>'+alphaCfgText(a[k])+'</td>'
     +'<td>'+alphaState(a[k])+'</td>'
     +'<td>'+alphaOps(k,a[k])+'</td></tr>').join('');
@@ -695,7 +756,7 @@ function cardAlpha(){
     +'<th style="width:150px">配置项</th><th style="width:120px">适用场景</th>'
     +'<th>当前配置</th><th style="width:104px">状态</th><th style="width:150px">操作</th>'
     +'</tr></thead><tbody>'+rows+'</tbody></table>'
-    +'<div class="tip">一个 Offer 下每个配置项仅保留一条记录；Offer 固定为当前 Offer，参数范围与校验逻辑与原 Alpha Config 页一致。</div>'
+    +'<div class="tip">一个 Offer 下每个配置项仅保留一条记录；Offer 固定为当前 Offer，参数范围与校验逻辑与原 Alpha Config 页一致；配置/重新触发时走新的 s2s 对接逻辑。</div>'
     +'</div></div>';
 }
 function alphaEdit(k,isNew){
@@ -714,7 +775,7 @@ function alphaRetry(k){
   /* 与线上一致：即时调接口重新触发，不进入保存流程 */
   form.alphaConfig[k].status='正常';
   if(snapshot.alphaConfig&&snapshot.alphaConfig[k]) snapshot.alphaConfig[k].status='正常';
-  mark();render();toast('Success！');
+  mark();render();toast('已重新触发（走新 s2s 对接逻辑）');
 }
 function alphaErrors(d){
   const e=[];
@@ -741,11 +802,11 @@ function dwAlpha(){
 
   if(tt===1){
     h+='<div class="sec"><div class="sh">掐尾量参数</div><div class="sb">'
-     +'<div class="fi"><label>轮次:</label><div class="c"><div class="row">'
+     +'<div class="fi"><label>轮次'+ii(ALPHA_TIP.loop)+':</label><div class="c"><div class="row">'
        +'<input type="number" min="1" max="7" style="width:220px" placeholder="请输入 1~7 之间的整数" value="'
        +(d.loop==null?'':d.loop)+'" oninput="dw.d.loop=this.value===\'\'?null:+this.value;dwRender()">'
        +(has('请输入1-7整数')?'<span class="tag r">请输入1-7整数</span>':'')+'</div></div></div>'
-     +'<div class="fi"><label>频次:</label><div class="c"><div class="row">'
+     +'<div class="fi"><label>频次'+ii(ALPHA_TIP.scope)+':</label><div class="c"><div class="row">'
        +'<input type="number" min="6" max="168" style="width:220px" placeholder="请输入 6~168 之间的整数" value="'
        +(d.scope==null?'':d.scope)+'" oninput="dw.d.scope=this.value===\'\'?null:+this.value;dwRender()"'
        +' onblur="alphaClampScope(6,168)"><span class="small">h</span>'
@@ -754,7 +815,7 @@ function dwAlpha(){
      +'</div></div>';
   }else{
     h+='<div class="sec"><div class="sh">Reject 补发参数</div><div class="sb">'
-     +'<div class="fi"><label>时间范围:</label><div class="c"><div class="row">'
+     +'<div class="fi"><label>时间范围'+ii(ALPHA_TIP.range)+':</label><div class="c"><div class="row">'
        +'<input type="number" min="24" max="168" style="width:220px" placeholder="请输入 24~168 number" value="'
        +(d.scope==null?'':d.scope)+'" oninput="dw.d.scope=this.value===\'\'?null:+this.value;dwRender()"'
        +' onblur="alphaClampScope(24,168)"><span class="small">h</span>'
@@ -829,7 +890,7 @@ function dwRender(){
    +'<div class="b">'+body+'</div>'
    +'<div class="f"><div></div>'
    +'<div class="row"><button class="btn" onclick="dwClose()">取消</button>'
-   +'<button class="btn pri" '+(err.length?'disabled':'')+' onclick="dwApply()">确定</button></div></div></div>';
+   +'<button class="btn pri" '+(err.length?'disabled':'')+' onclick="dwApply()">保存</button></div></div></div>';
 }
 function dwErrors(){
   const e=[],d=dw.d;
@@ -840,7 +901,7 @@ function dwErrors(){
   }
   if(dw.type==='bt'){
     if(d.open_cross_bt===1&&!d.bindListArr.length) e.push('');
-    if(d.open_cross_bt===1&&!BT_SYNC.some(x=>d[x.k]===1)) e.push('');
+
   }
   if(dw.type==='tr'&&d.post_package_status==='enabled'&&d.post_package_type===2
     &&(d.no_banding_rate==null||d.no_banding_rate==='')) e.push('');
@@ -858,18 +919,18 @@ function dwErrors(){
 function dwChn(){
   const d=dw.d;
   let h='<div class="sec"><div class="sh">General Channel Setting</div><div class="sb">'
-   +'<div class="seg">'+Object.keys(MODE).map(k=>'<button class="'+(d.mode==+k?'on':'')+'" onclick="dwSetMode('+k+')">'+MODE[k]+'</button>').join('')+'</div>'
-   +''
+   +'<div class="seg">'+[6,1,2].map(k=>'<button class="'+(d.mode===k?'on':'')+'" onclick="dwSetMode('+k+')">'
+     +MODE[k]+ii(MODE_SCENE[k])+'</button>').join('')+'</div>'
    +'</div></div>';
 
   if(d.mode===1||d.mode===2){
     h+='<div class="sec"><div class="sh">Special Channel Setting'
-     +'<button class="btn sm" onclick="dwScsNew()">+ Add Rule</button></div><div class="sb">'
+     +'<span style="display:flex;gap:4px;align-items:center;font-weight:400">'+ii(SCS_TIP)+'<button class="btn sm" onclick="dwScsNew()">+ Add Rule</button></span></div><div class="sb">'
      +'<table class="t"><thead><tr><th>Channel Rules</th><th style="width:118px">Value Type</th><th>Subid List</th><th style="width:70px">Status</th><th style="width:118px">操作</th></tr></thead><tbody>'
      +(d.special_channel_setting.length?d.special_channel_setting.map((r,i)=>
         '<tr><td>'+(r.channel_rules||[]).map(x=>'<div class="mono">'+esc(x)+'</div>').join('')
         +'</td><td>'+MODE[r.mode]+'</td><td>'+((r.subid_list||[]).length?r.subid_list.map(x=>'<div class="mono">'+esc(x)+'</div>').join(''):'<span class="gray">—</span>')
-        +'</td><td>'+(r.status==='running'?'<span class="tag g">生效中</span>':'<span class="tag o">待提交</span>')+'</td>'
+        +'</td><td>'+(r.status==='running'?'<span class="tag g">生效中</span>':'<span class="tag o">待保存</span>')+'</td>'
         +'<td><button class="btn sm" '+(r.mode!==6?'disabled':'onclick="dwScsEdit('+i+')"')+'>编辑</button> '
         +'<button class="btn sm dgr" onclick="dwScsDel('+i+')">删除</button></td></tr>').join('')
       :'<tr><td colspan="5" class="gray" style="text-align:center;padding:16px">暂无规则</td></tr>')
@@ -890,6 +951,7 @@ function dwChn(){
      +'</div></div>';
   }
 
+  if(d.mode!==6) return h;
   h+='<div class="sec"><div class="sh">Action</div><div class="sb"><div class="row">'
    +'<button class="btn sm" onclick="dwMobOpen(\'Update\')">指定Mob替换</button>'
    +'<button class="btn sm" onclick="dwMobOpen(\'Delete\')">指定Mob删除</button></div>'
@@ -933,7 +995,8 @@ function dwScsForm(){
   let h='<div class="ro" style="margin-top:12px"><b class="small">'+(x.idx==null?'Add Rule':'Edit Rule')+'</b>'
    +'<div class="fi" style="margin-top:10px"><label>Offer UUID:</label><div class="c mono">'+esc(c.uuid)+'</div></div>'
    +'<div class="fi"><label>Value Type:</label><div class="c"><div class="seg">'
-   +types.map(k=>'<button class="'+(x.mode==+k?'on':'')+'" onclick="dwScsSet(\'mode\','+k+')">'+MODE[k]+'</button>').join('')+'</div></div></div>'
+   +types.map(k=>'<button class="'+(x.mode==+k?'on':'')+'" onclick="dwScsSet(\'mode\','+k+')">'
+     +MODE[k]+ii(SCS_VT_TIP[+k])+'</button>').join('')+'</div></div></div>'
    +'<div class="fi"><label>Channel uuid:</label><div class="c"><div class="row">'
    +'<select style="width:190px" onchange="dwScsSet(\'channelUuid\',this.value)"><option value="">Search</option>'
    +CHANNELS.map(v=>'<option '+(x.channelUuid===v?'selected':'')+'>'+v+'</option>').join('')+'</select>'
@@ -986,9 +1049,9 @@ function dwBt(){
        +'<button class="btn pri sm" '+(q?'':'disabled')+' onclick="dwBtAddSel()">增加</button></div>';
     }
     h+='</div></div>'
-     +'<div class="sec"><div class="sh">跨Offer BT同步内容</div><div class="sb"><div class="acts">'
-     +BT_SYNC.map(x=>'<label class="dis"><input type="checkbox" checked disabled>'+x.label+'</label>').join('')
-     +'</div></div></div>';
+     +'<div class="sec"><div class="sh">跨Offer BT同步内容</div><div class="sb">'
+     +'<div class="dl">'+BT_SYNC_TEXT.map(x=>'<div class="r"><div class="k">'+x[0]+'</div>'
+        +'<div class="v small">'+x[1]+'</div></div>').join('')+'</div></div></div>';
   }
   return h;
 }
@@ -1009,9 +1072,9 @@ function dwTr(){
    +'<span class="sw '+(on?'on':'')+'" onclick="dwTrToggle()"></span></div></div>';
   if(on){
     h+='<div class="sec"><div class="sh">包名透传模式</div><div class="sb"><div class="seg">'
-     +[2,1,0].map(k=>'<button class="'+(d.post_package_type===k?'on':'')+'" '+(k===0?'disabled':'onclick="dwTrType('+k+')"')
-        +' title="'+esc(PKG_TIP[k])+'">'+PKG_TYPE[k]+'</button>').join('')
-     +'</div><div class="tip">'+esc(PKG_TIP[d.post_package_type])+'</div>';
+     +[2,1].map(k=>'<button class="'+(d.post_package_type===k?'on':'')+'" onclick="dwTrType('+k+')">'
+        +PKG_TYPE[k]+ii(PKG_TIP[k])+'</button>').join('')
+     +'</div>';
     if(d.post_package_type===1)
       h+='<div class="acts" style="margin-top:10px"><label><input type="checkbox" '+(d.open_level_e===1?'checked':'')
        +' onchange="dw.d.open_level_e=this.checked?1:0;dwRender()">是否开启E等级</label></div>'
@@ -1025,14 +1088,15 @@ function dwTr(){
     h+='<div class="sec"><div class="sh">包名品类</div><div class="sb"><div class="acts">'
      +PKG_CATS.map(c=>'<label><input type="checkbox" '+((d.package_categories||[]).includes(c)?'checked':'')
         +' onchange="dwTrCat(\''+c+'\',this.checked)">'+c+'</label>').join('')
-     +'</div><div class="tip">只从所选品类中挑选透传包名；不勾选表示不限品类。当前已选 <b>'
-     +((d.package_categories||[]).length||'不限')+'</b></div></div></div>'
+     +'</div><div class="tip">只挑选选中品类包名透传。若开启白名单，则品类设置不生效</div></div></div>'
      ;
     const W=lines(d.package_white_list),wlOn=d.package_white_list_status===1;
     h+='<div class="sec"><div class="sh">透传包名白名单'
      +(wlOn?'<span class="small gray">已输入 '+W.length+' 个</span>':'')+'</div><div class="sb">'
-     +'<span class="sw '+(wlOn?'on':'')+'" onclick="dwTrWl()"></span>'
-     +(wlOn?'<p class="small gray" style="margin-top:10px">多个包名以换行符隔开</p>'
+     +'<div class="tip">导出对应国家包名后按需筛选包名设置白名单，仅取用白名单中包名上报</div>'
+     +'<div class="row" style="margin:8px 0"><span class="sw '+(wlOn?'on':'')+'" onclick="dwTrWl()"></span>'
+     +'<button class="btn sm" onclick="toast(\'原型示意：新开标签页导出国家包名\')">导出国家包名</button></div>'
+     +(wlOn?'<p class="small gray" style="margin-top:10px">多个包名请换行输入</p>'
         +'<textarea rows="7" style="margin-top:6px" oninput="dw.d.package_white_list=this.value;dwRender()">'+esc(d.package_white_list)+'</textarea>'
         :'')
      +'</div></div>'
@@ -1043,6 +1107,23 @@ function dwTr(){
   }
   return h;
 }
+/* 包名透传未生效校验（文档 3.5.2）：任一不通过即未生效，不影响保存 */
+function pkgInvalid(t){
+  t=t||form.transparency;
+  if(t.post_package_status!=='enabled') return [];
+  const e=[],geo=form.offer_target_geo||[];
+  if(geo.length!==1) e.push(PKG_INVALID.geo_multi);
+  else if(!PKG_GEOS.includes(geo[0])) e.push(PKG_INVALID.geo_unsupported);
+  if((form.offer_tracking_link||'').indexOf('{@info.mb_package_v3()@}')<0) e.push(PKG_INVALID.no_marco);
+  return e;
+}
+/* 素材透传未生效校验（文档 3.5.2） */
+function creInvalid(t){
+  t=t||form.transparency;
+  if(t.post_package_status!=='enabled'||t.post_creative_status!=='enabled') return [];
+  const L=form.offer_tracking_link||'';
+  return (L.indexOf('{@info.creative_name3@}')<0&&L.indexOf('{@info.theme_name3@}')<0)?[CRE_INVALID]:[];
+}
 function togglePkgList(){
   const t=form.transparency;
   if(t.post_package_status==='enabled'){
@@ -1050,18 +1131,27 @@ function togglePkgList(){
       '',()=>{
       t.post_package_status='disabled';mark();closeLayer();render();});
   }
-  t.post_package_status='enabled';mark();render();
+  /* 由关切换为开：展开抽屉，打开包名透传开关，选中 Not Banding 默认值和 all 品类（文档 3.5.2） */
+  dwOpen('tr');
+  dw.d.post_package_status='enabled';dw.d.post_package_type=2;dw.d.no_banding_rate=20;
+  dw.d.package_categories=PKG_CATS.slice();dwRender();
 }
 function toggleCreativeList(){
   const t=form.transparency;
   if(t.post_package_status!=='enabled') return;
-  t.post_creative_status=t.post_creative_status==='enabled'?'disabled':'enabled';mark();render();
+  /* 由关切换为开：展开抽屉并打开素材透传开关（文档 3.5.2） */
+  if(t.post_creative_status!=='enabled'){
+    dwOpen('tr');dw.d.post_creative_status='enabled';return dwRender();
+  }
+  t.post_creative_status='disabled';mark();render();
 }
 function dwTrWl(){dw.d.package_white_list_status=dw.d.package_white_list_status===1?0:1;dwRender();}
 function dwTrCat(c,v){const a=dw.d.package_categories=dw.d.package_categories||[];
   const i=a.indexOf(c);if(v&&i<0)a.push(c);if(!v&&i>=0)a.splice(i,1);dwRender();}
 function dwTrToggle(){dw.d.post_package_status=dw.d.post_package_status==='enabled'?'disabled':'enabled';dwRender();}
 function dwTrType(k){dw.d.post_package_type=k;dw.d.open_level_e=k===1?1:0;dw.d.no_banding_rate=k===2?20:0;dwRender();}
+/* 品类全选/全不选快捷操作 */
+function dwTrCatAll(v){dw.d.package_categories=v?PKG_CATS.slice():[];dwRender();}
 
 /* --- 抽屉：执行参数（重复执行检测 + Pid 列表） --- */
 function dwExec(){
@@ -1117,7 +1207,8 @@ function dwApply(){
       const mo=form.aiLayerBreakthrough.custom_rules.filter(r=>r.change_mob===1||r.change_appoint_mob===1||r.delete_mob===1).length;
       if(mo) affected.push(mo+' 条规则含 Mob 类动作，将失效');
     }
-    const go=()=>{form.chnValueManagement=d;dw=null;mark();closeLayer();render();};
+    const go=()=>{(d.special_channel_setting||[]).forEach(r=>r.status='running');
+      form.chnValueManagement=d;dw=null;mark();closeLayer();render();toast(SAVED);};
     if(!affected.length) return go();
     return confirmBox('切换传值模式为「'+MODE[d.mode]+'」',
       '<ul style="margin:0 0 0 20px;color:#606266">'
@@ -1126,12 +1217,13 @@ function dwApply(){
   if(t==='bt'){
     const was=form.crossOfferBt.open_cross_bt===1,now=d.open_cross_bt===1;
     const go=()=>{
+      BT_SYNC.forEach(x=>d[x.k]=now?1:0);
       form.crossOfferBt=d;
-      form.chnValueManagement.disabledSubidEdit=now&&d.sync_mob===1;
+      form.chnValueManagement.disabledSubidEdit=now;
       if(!now){
         form.aiLayerBreakthrough.custom_rules.forEach(r=>(r.rule_items||[]).forEach(i=>{if(i.scope===1)i.scope=0;}));
       }
-      dw=null;mark();closeLayer();render();};
+      dw=null;mark();closeLayer();render();toast(SAVED);};
     if(was&&!now) return confirmBox('关闭跨Offer BT',
       '',go);
     if(!was&&now&&d.bindListArr.some(x=>x.includes('|'))) return confirmBox('跨Offer BT覆盖提示',
@@ -1139,10 +1231,10 @@ function dwApply(){
       +'<div class="mono" style="margin-top:8px">'+d.bindListArr.map(esc).join('<br>')+'</div>',go);
     return go();
   }
-  if(t==='tr'){form.transparency=d;dw=null;mark();closeLayer();render();return;}
+  if(t==='tr'){form.transparency=d;dw=null;mark();closeLayer();render();toast(SAVED);return;}
   const a=form.aiLayerBreakthrough;
   a.repeat_check=d.repeat_check;a.pid_list=d.pid_list;a.disabled_pid_list=d.disabled_pid_list;
-  dw=null;mark();closeLayer();render();
+  dw=null;mark();closeLayer();render();toast(SAVED);
 }
 
 /* ===== 模块4：自定义规则换参 ===== */
@@ -1195,13 +1287,15 @@ function cardRules(){
 }
 /* --- 时间轴数据与渲染 --- */
 function stateCell(r,i){
+  const tips=r.enabled?ruleMarcoWarns(r):[];
   const bad=r.enabled?ruleErrors(r).length:0;
   const lbl=!r.enabled?'<span class="tag gray">已停用</span>'
-    :bad?'<span class="tag r">设置无效</span>':'<span class="tag g">执行中</span>';
+    :bad?'<span class="tag r"'+(tips.length?' title="'+esc(tips.join('\n'))+'"':'')+'>未生效</span>'
+    :'<span class="tag g">生效中</span>';
   return swCell(lbl,r.enabled,'toggleRule('+i+')');
 }
 const MARCO={change_pid:'{@info.change_pid()@}',disable_pid:'{@info.random_pid()@}',
-  change_c:'{@info.change_c()@}',post_package:'{@info.package_name()@}',post_creative:'{@info.creative_id()@}'};
+  change_c:'{@info.change_c()@}',post_package:'{@info.mb_package_v3()@}',post_creative:'{@info.theme_name3@}'};
 const MARCO_SLOT={change_pid:'pid 参数',disable_pid:'pid 参数',change_c:'c 参数',
   post_package:'包名参数（如 &bundle=）',post_creative:'素材参数（如 &creative=）'};
 function linkBtn(keys,label){
@@ -1226,7 +1320,10 @@ function openLink(keysStr){
 function closeLink(){$('#layer2').innerHTML='';}
 function toggleRule(i){
   const r=form.aiLayerBreakthrough.custom_rules[i];
+  const wasOn=r.enabled===1;
   r.enabled=r.enabled?0:1;mark();render();
+  /* 停用含【Block点击】动作的规则时，取消掉已生效的 Block 点击状态（文档 3.7.2） */
+  if(wasOn&&r.block_click===1) toast('规则已停用，channel '+(r.block_channel_uuid||'')+' 的 Block 点击状态已取消','warn');
 }
 let tlSel=null;
 function fmtd(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
@@ -1235,7 +1332,8 @@ function execDays(){
   for(let i=-7;i<=6;i++){
     const d=new Date(2026,7,10+i),key=fmtd(d);
     const past=(a.executed_report||[]).filter(x=>x.timestamp.slice(0,10)===key);
-    const fut=(a.future_executed_report||[]).filter(x=>x.timestamp.slice(0,10)===key);
+    const hasTiming=a.custom_rules.some(r=>r.enabled&&r.rule_type==='timing');
+    const fut=hasTiming?(a.future_executed_report||[]).filter(x=>x.timestamp.slice(0,10)===key):[];
     out.push({key,label:(d.getMonth()+1)+'/'+d.getDate(),today:i===0,future:i>0,
       ok:past.filter(x=>x.status!=='fail').length,fail:past.filter(x=>x.status==='fail').length,
       plan:fut.length,items:past.map(x=>({...x,kind:x.status==='fail'?'fail':'ok'})).concat(fut.map(x=>({...x,kind:'plan'})))});
@@ -1263,22 +1361,29 @@ function tlDetail(){
   return '<div class="tldet"><div class="dh">'+(d.today?'今天':d.label)+' 执行'+(d.future?'预告':'明细')
     +' <span class="tag gray">'+d.key+'</span> '+sum+'</div><ul>'
     +(d.items.length?d.items.map(x=>'<li>'+TAG[x.kind]+' <span class="mono gray">'+esc(x.timestamp.slice(11,16))+'</span> '+esc(x.content)+'</li>').join('')
-      :'<li class="gray">当天无执行记录</li>')+'</ul></div>';
+      :'<li class="gray">'+(d.future&&!form.aiLayerBreakthrough.custom_rules.some(r=>r.enabled&&r.rule_type==='timing')
+          ?'未设置定时规则，无执行预告':'当天无执行记录')+'</li>')+'</ul></div>';
 }
 
 function releasePid(i){confirmBox('确定要提前恢复 pid：'+form.aiLayerBreakthrough.disabled_pid_list[i].pid+' 的使用吗？','',()=>{
   form.aiLayerBreakthrough.disabled_pid_list.splice(i,1);mark();render();closeLayer();});}
 function copyRule(i){const r=JSON.parse(JSON.stringify(form.aiLayerBreakthrough.custom_rules[i]));
   r.id=++uid;r.disabled=false;r.enabled=1;form.aiLayerBreakthrough.custom_rules.splice(i+1,0,r);mark();render();}
-function delRule(i){confirmBox('删除规则 '+(i+1)+'？','',()=>{
-  form.aiLayerBreakthrough.custom_rules.splice(i,1);mark();render();closeLayer();});}
+function delRule(i){
+  const r=form.aiLayerBreakthrough.custom_rules[i];
+  confirmBox('删除规则 '+(i+1)+'？','',()=>{
+    const hadBlock=r&&r.block_click===1&&r.enabled===1,chn=r?r.block_channel_uuid:'';
+    form.aiLayerBreakthrough.custom_rules.splice(i,1);mark();render();closeLayer();
+    /* 删除含【Block点击】动作的规则时，取消掉已生效的 Block 点击状态（文档 3.7.2） */
+    if(hadBlock) toast('规则已删除，channel '+(chn||'')+' 的 Block 点击状态已取消','warn');
+  });}
 
 /* ===== 规则编辑抽屉 ===== */
 let editing=null;
 function newRule(){return{id:++uid,enabled:1,rule_type:'index',periods:1,unit:'hour',union_condition:'and',
   start_date:'',change_start:0,change_end:23,
   rule_items:[{dimension:'offer',scope:0,periods:1,unit:'hour',index:'',caliber:'sum',symbol:'gt',threshold:null,channel_uuid:''}],
-  change_pid:0,disable_pid:0,change_c:0,change_mob:0,change_appoint_mob:0,delete_mob:0,
+  change_pid:0,disable_pid:0,change_c:0,change_mob:0,change_appoint_mob:0,delete_mob:0,stop_channel:0,
   notification:0,block_click:0,cancel_block_click:0,block_channel_uuid:'',disabled:false};}
 function editRule(i){
   editing={idx:i,isNew:i<0,rule:i<0?newRule():JSON.parse(JSON.stringify(form.aiLayerBreakthrough.custom_rules[i]))};
@@ -1359,6 +1464,7 @@ function renderDrawer(){
     return '<label class="'+(st.dis?'dis':'')+'">'
      +'<input type="checkbox" '+(r[a.k]===1?'checked':'')+' '+(st.dis?'disabled':'')
      +' onchange="dAct(\''+a.k+'\',this.checked)">'+a.label
+     +(ACT_TIP[a.k]?ii(ACT_TIP[a.k]):'')
      +'</label>';
   };
   h+='<div class="sec"><div class="sh">执行下列动作</div><div class="sb">';
@@ -1366,7 +1472,7 @@ function renderDrawer(){
   ACT_GROUPS.forEach(g=>{
     h+='<div class="ag"><div class="agh">'+esc(g.name)+'</div><div class="acts">'
      +g.keys.map(k=>actLabel(ACTIONS.find(a=>a.k===k))).join('')+'</div>';
-    if(g.key==='chn'&&(r.block_click===1||r.cancel_block_click===1)){
+    if(g.key==='chn'&&(r.block_click===1||r.cancel_block_click===1||r.stop_channel===1)){
       h+='<div class="agx"><div class="small gray">Block channel uuid：</div>'
        +'<select style="width:100%;margin-top:4px" onchange="dSet(\'block_channel_uuid\',this.value)">'
        +'<option value="">输入channel uuid</option>'
@@ -1382,7 +1488,7 @@ function renderDrawer(){
   h+='</div></div>';
 
   /* --- 执行效果（举例说明） --- */
-  h+='<div class="sec"><div class="sh">执行效果</div><div class="sb">'+effectText(r)+'</div></div>';
+  h+=linkRow(r);
 
   h+='</div><div class="f">'
    +'<div></div>'
@@ -1390,48 +1496,16 @@ function renderDrawer(){
    +'<button class="btn pri" '+(blk.length?'disabled':'')+' onclick="saveRule()">保存规则</button></div></div></div>';
   $('#layer').innerHTML=h;
 }
-function effectText(r){
-  const on=ACTIONS.filter(a=>r[a.k]===1).map(a=>a.label);
-  if(!on.length) return '';
-  const trig=r.rule_type==='timing'
-    ? '从 <b>'+esc(r.start_date||'（未选日期）')+'</b> 起，每 <b>'+(r.periods||'?')+'</b> 天，在 <b>'+r.change_start+'~'+r.change_end+'</b> 点之间触发一次'
-    : '每 <b>'+(r.periods||'?')+(UNIT[r.unit]||'')+'</b> 检查一次，'+(r.rule_items||[]).length+' 个条件按「<b>'+UNION[r.union_condition]+'</b>」组合，满足即触发';
-  let eg;
-  if(r.rule_type==='timing'){
-    eg='举例：若今天是触发日，系统会在 '+r.change_start+':00~'+r.change_end+':00 之间执行下列动作。';
-  }else{
-    const it=(r.rule_items||[])[0];
-    if(!it||!it.index) eg='举例：条件配置完整后，此处会给出具体数值示例。';
-    else{
-      const ix=idxOf(it.index),u=ix&&ix.is_rate?'%':'';
-      const v=['gt','gte'].includes(it.symbol)?Number(it.threshold||0)+1:Math.max(0,Number(it.threshold||0)-1);
-      eg='举例：若某 '+(DIM[it.dimension]||'对象')+' 在过去 '+(it.periods||'?')+(UNIT[it.unit]||'')
-        +' 的 '+(ix?ix.name:'指标')+'（'+(CALIBER[it.caliber]||'')+'）为 <b>'+v+u+'</b>，'
-        +SYMBOL[it.symbol]+' 阈值 '+it.threshold+u+'，则命中本规则。';
-    }
-  }
-  const acts=[];
-  if(r.change_pid===1) acts.push('按 Pid 列表<b>顺序</b>取下一个 pid 替换');
-  if(r.disable_pid===1) acts.push('将命中的 pid 加入禁用列表（后续<b>随机</b>取 pid），到期自动恢复');
-  if(r.change_c===1) acts.push('更换 C 参（<span class="mono">'+esc(MARCO.change_c)+'</span> 替换为 +8 时区年月日时）');
-  if(r.change_mob===1) acts.push('把 Subid List 中的 Mob 号<b>全量</b>换新');
-  if(r.change_appoint_mob===1) acts.push('只替换命中条件的那些 Mob 号');
-  if(r.delete_mob===1) acts.push('把命中条件的 Mob 号从 Subid List 中<b>删除</b>');
-  if(r.notification===1) acts.push('向配置的通知渠道推送一条执行消息');
-  if(r.block_click===1) acts.push('对 channel <span class="mono">'+esc(r.block_channel_uuid||'（未指定）')+'</span> <b>停止</b>发放点击');
-  if(r.cancel_block_click===1) acts.push('对 channel <span class="mono">'+esc(r.block_channel_uuid||'（未指定）')+'</span> <b>恢复</b>发放点击');
+/* 勾选 更换C参 / 禁用Pid / 更换PID 任一时，展示【一键设置参数到 link】（文档 3.7.3） */
+function linkRow(r){
   const needLink=[];
   if(r.change_pid===1) needLink.push('change_pid');
   if(r.disable_pid===1) needLink.push('disable_pid');
   if(r.change_c===1) needLink.push('change_c');
-  const wrn=ruleWarns(r);
-  return '<div class="small" style="line-height:2"><div><b>触发时机</b>：'+trig+'</div>'
-   +'<div><b>命中后</b>：<ol style="margin:4px 0 0 20px">'+acts.map(x=>'<li>'+x+'</li>').join('')+'</ol></div>'
-   +'<div style="margin-top:6px" class="gray">'+eg+'</div></div>'
-   +(needLink.length?'<div class="ro" style="margin-top:10px"><div class="row">'
-      +'<span class="small">上述动作需 tracking link 中已配置对应 marco，否则不会生效</span>'
-      +linkBtn(needLink)+'</div></div>':'')
-   ;
+  if(!needLink.length) return '';
+  return '<div class="ro" style="margin-bottom:16px"><div class="row">'
+   +'<span class="small">上述动作需 tracking link 中已配置对应 marco，否则不会生效</span>'
+   +linkBtn(needLink,'一键设置参数到 link')+'</div></div>';
 }
 function dSet(k,v){editing.rule[k]=v;
   if(k==='rule_type'){
@@ -1462,7 +1536,7 @@ function cDel(n){editing.rule.rule_items.splice(n,1);renderDrawer();}
 function saveRule(){
   const rs=form.aiLayerBreakthrough.custom_rules;
   if(editing.isNew) rs.push(editing.rule); else rs[editing.idx]=editing.rule;
-  editing=null;mark();closeLayer();render();
+  editing=null;mark();closeLayer();render();toast(SAVED);
 }
 function closeDrawer(){editing=null;closeLayer();}
 
@@ -1475,7 +1549,7 @@ function confirmBox(title,body,onOk){_ok=onOk;
    +'<div class="f"><button class="btn" onclick="closeLayer()">取消</button>'
    +'<button class="btn pri" onclick="_ok&&_ok()">确定</button></div></div></div>';}
 
-const REC_TITLE={chn:'变更日志 · BT Mob号设置',bt:'变更日志 · 跨offer BT',
+const REC_TITLE={chn:'Channel Value Setting Record',bt:'变更日志 · 跨offer BT',
   tr:'变更日志 · 包名和素材透传',alpha:'变更日志 · Alpha Config',rules:'变更日志 · 自定义规则配置'};
 const RECORDS={
  chn:[
@@ -1621,85 +1695,8 @@ function openTester(){
    +'<tbody>'+(rows||'<tr><td colspan="4" class="gray" style="text-align:center;padding:16px">暂无规则</td></tr>')+'</tbody></table>'
    +'</div><div class="f"><button class="btn" onclick="closeLayer()">关闭</button></div></div></div>';}
 
-/* ===== 变更预览 ===== */
-function diffList(){
-  const out=[];
-  const push=(sec,f,a,b)=>{if(JSON.stringify(a)!==JSON.stringify(b))out.push({sec,f,a,b});};
-  const s=snapshot,f=form;
-  push('BT Mob号设置','General Channel Setting',MODE[s.chnValueManagement.mode],MODE[f.chnValueManagement.mode]);
-  push('BT Mob号设置','Special Channel Setting 条数',s.chnValueManagement.special_channel_setting.length,f.chnValueManagement.special_channel_setting.length);
-  push('BT Mob号设置','Subid List 数量',lines(s.chnValueManagement.subidListStr).length,lines(f.chnValueManagement.subidListStr).length);
-  push('跨offer BT','开关',s.crossOfferBt.open_cross_bt?'开':'关',f.crossOfferBt.open_cross_bt?'开':'关');
-  push('跨offer BT','绑定数量',s.crossOfferBt.bindListArr.length,f.crossOfferBt.bindListArr.length);
-  push('跨offer BT','绑定列表',s.crossOfferBt.bindListArr.join(','),f.crossOfferBt.bindListArr.join(','));
-  push('跨offer BT','同步内容',BT_SYNC.filter(x=>s.crossOfferBt[x.k]===1).map(x=>x.label).join('/')||'无',
-    BT_SYNC.filter(x=>f.crossOfferBt[x.k]===1).map(x=>x.label).join('/')||'无');
-  push('包名和素材透传','开关',s.transparency.post_package_status,f.transparency.post_package_status);
-  push('包名和素材透传','模式',PKG_TYPE[s.transparency.post_package_type],PKG_TYPE[f.transparency.post_package_type]);
-  push('包名和素材透传','no_banding_rate',s.transparency.no_banding_rate,f.transparency.no_banding_rate);
-  push('包名和素材透传','E等级',s.transparency.open_level_e,f.transparency.open_level_e);
-  push('包名和素材透传','包名品类',(s.transparency.package_categories||[]).join('/')||'不限',(f.transparency.package_categories||[]).join('/')||'不限');
-  push('包名和素材透传','白名单开关',s.transparency.package_white_list_status?'开':'关',f.transparency.package_white_list_status?'开':'关');
-  push('包名和素材透传','白名单数量',lines(s.transparency.package_white_list).length,lines(f.transparency.package_white_list).length);
-  push('包名和素材透传','素材透传',s.transparency.post_creative_status,f.transparency.post_creative_status);
-  /* Alpha Config */
-  const alphaBrief=t=>!t?'—':(t.task_type===1
-      ?('轮次 '+(t.loop==null?'—':t.loop)+' / 频次 '+(t.scope==null?'—':t.scope)+'h')
-      :('时间范围 '+(t.scope==null?'—':t.scope)+'h / '+((t.reject_reasons||[]).filter(Boolean).join('、')||'—')))
-    +' / 目标渠道 '+(ALPHA_DIST[t.dist_channel_type]||'—')
-    +(t.dist_channel_type===2?'('+((t.dist_channel_uuid||[]).join('、')||'未选')+')':'');
-  [1,2].forEach(k=>{
-    const o=(s.alphaConfig||{})[k],n=form.alphaConfig[k];
-    if(!o&&n) out.push({sec:'Alpha Config',f:'新增 '+ALPHA_TASK[k]+' 配置',a:'—',b:alphaBrief(n)});
-    else if(o&&!n) out.push({sec:'Alpha Config',f:'删除 '+ALPHA_TASK[k]+' 配置',a:alphaBrief(o),b:'—'});
-    else if(o&&n&&JSON.stringify(o)!==JSON.stringify(n))
-      out.push({sec:'Alpha Config',f:'修改 '+ALPHA_TASK[k]+' 配置',a:alphaBrief(o),b:alphaBrief(n)});
-  });
-  push('自定义规则配置','规则条数',s.aiLayerBreakthrough.custom_rules.length,f.aiLayerBreakthrough.custom_rules.length);
-  const sr=s.aiLayerBreakthrough.custom_rules,fr=f.aiLayerBreakthrough.custom_rules;
-  fr.forEach((r,i)=>{const o=sr.find(x=>x.id===r.id);
-    if(!o) out.push({sec:'自定义规则配置',f:'新增规则 '+(i+1),a:'—',b:RULE_TYPE[r.rule_type]+'：'+condText(r).replace(/<[^>]+>/g,'')});
-    else if(o.enabled!==r.enabled) out.push({sec:'自定义规则配置',f:'规则 '+(i+1)+' 启用状态',
-      a:o.enabled?'执行中':'已停用',b:r.enabled?'执行中':'已停用'});
-    else if(JSON.stringify(o)!==JSON.stringify(r)) out.push({sec:'自定义规则配置',f:'修改规则 '+(i+1),
-      a:ACTIONS.filter(a=>o[a.k]===1).map(a=>a.label).join('/')||'无动作',
-      b:ACTIONS.filter(a=>r[a.k]===1).map(a=>a.label).join('/')||'无动作'});});
-  sr.forEach(o=>{if(!fr.find(x=>x.id===o.id)) out.push({sec:'自定义规则配置',f:'删除规则',a:RULE_TYPE[o.rule_type],b:'—'});});
-  push('自定义规则配置','重复执行检测',JSON.stringify(s.aiLayerBreakthrough.repeat_check),JSON.stringify(f.aiLayerBreakthrough.repeat_check));
-  push('自定义规则配置','Pid 列表数量',lines(s.aiLayerBreakthrough.pid_list).length,lines(f.aiLayerBreakthrough.pid_list).length);
-  return out;
-}
-function openDiff(){
-  const bad=[];
-  const soft=[];
-  form.aiLayerBreakthrough.custom_rules.forEach((r,i)=>{if(!r.enabled)return;
-    const b=ruleBlockers(r);if(b.length)bad.push('规则'+(i+1)+'：'+b.join('；'));
-    const w=ruleWarns(r);if(w.length&&!b.length)soft.push('规则'+(i+1)+'：'+w.join('；'));});
-  if(form.chnValueManagement.mode===6&&lines(form.chnValueManagement.subidListStr).length>500) bad.push('Subid 数量限制在500个内');
-  if(form.transparency.post_package_status==='enabled'&&form.transparency.post_package_type===2
-    &&(form.transparency.no_banding_rate==null||form.transparency.no_banding_rate==='')) bad.push('包名和素材透传：请输入0-100数字');
-  const rc=form.aiLayerBreakthrough.repeat_check;
-  if(rc.check_pid===1&&!rc.check_pid_hour) bad.push('重复执行检测：请输入1~24小时的正整数（更换Pid）');
-  if(rc.check_c===1&&!rc.check_c_hour) bad.push('重复执行检测：请输入1~24小时的正整数（更换C参）');
-
-  const d=diffList(),grp={};
-  d.forEach(x=>{(grp[x.sec]=grp[x.sec]||[]).push(x);});
-  let body='';
-  body+= d.length?Object.keys(grp).map(k=>'<div class="sec"><div class="sh">'+esc(k)+'</div><div class="sb">'
-     +'<table class="t"><thead><tr><th style="width:34%">字段</th><th>原值</th><th>新值</th></tr></thead><tbody>'
-     +grp[k].map(x=>'<tr><td>'+esc(x.f)+'</td><td class="gray">'+esc(x.a)+'</td><td><b>'+esc(x.b)+'</b></td></tr>').join('')
-     +'</tbody></table></div></div>').join(''):'<div class="empty">没有检测到变更</div>';
-  $('#layer').innerHTML='<div class="mask" onclick="if(event.target===this)closeLayer()"><div class="dlg w880">'
-   +'<div class="h">保存前变更预览<a onclick="closeLayer()">×</a></div><div class="b">'+body+'</div>'
-   +'<div class="f"><button class="btn" onclick="closeLayer()">返回修改</button>'
-   +'<button class="btn pri" '+(bad.length||!d.length?'disabled':'')+' onclick="doSave()">确认保存</button></div></div></div>';}
-function doSave(){Object.assign(snapshot,JSON.parse(JSON.stringify(form)));
-  closeLayer();mark();render();}
-
-/* ===== 脏数据标记 + 拖拽 + 渲染 ===== */
-function mark(){const n=diffList().length;
-  $('#dirty').textContent=n?('有 '+n+' 处未保存的修改'):'';
-  window.onbeforeunload=n?(()=>'有未保存修改'):null;}
+/* ===== 保存即生效（各模块独立提交，无页面级统一 Save） ===== */
+function mark(){Object.assign(snapshot,JSON.parse(JSON.stringify(form)));}
 function bindDrag(){
   const tb=document.querySelector('#ruleTbl tbody');if(!tb)return;
   let from=null;
@@ -1723,7 +1720,15 @@ function render(){
   $('#main').innerHTML=h;
   renderNav();bindDrag();
 }
-render();mark();
+/* 进入页面：跑各模块「未生效」校验并刷新列表状态（3.1.1） */
+function startupCheck(){
+  let n=0;
+  form.aiLayerBreakthrough.custom_rules.forEach(r=>{if(r.enabled&&ruleErrors(r).length)n++;});
+  if(pkgInvalid().length) n++;
+  if(creInvalid().length) n++;
+  toast(n?('已完成生效校验：'+n+' 项配置未生效'):'已完成生效校验：全部配置生效中',n?'warn':'');
+}
+render();mark();setTimeout(startupCheck,300);
 </script>
 </body>
 </html>
