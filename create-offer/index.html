@@ -1,0 +1,1776 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>3S Create Offer 重构原型 v5</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#303133;background:#f5f7fa}
+a{cursor:pointer;color:#409eff;text-decoration:none}
+.mono{font-family:Menlo,Consolas,monospace;font-size:12px}
+.small{font-size:12px}.gray{color:#909399}
+.hd{position:sticky;top:0;z-index:60;background:#fff;border-bottom:1px solid #e4e7ed;padding:10px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.hd h1{font-size:16px;font-weight:600}
+.ctx{display:flex;gap:6px;align-items:center;font-size:12px;color:#606266;flex-wrap:wrap}
+.ctx .kv{background:#f4f4f5;border-radius:3px;padding:2px 8px}
+.ctx .kv b{color:#303133;font-weight:500}
+
+/* 主体 + 右侧锚点导航 */
+.wrap{display:flex;gap:16px;padding:16px 24px 90px;align-items:flex-start}
+.main{flex:1;min-width:0}
+.nav{position:sticky;top:60px;width:230px;flex:0 0 230px;background:#fff;border:1px solid #e4e7ed;border-radius:4px;padding:8px;max-height:calc(100vh - 150px);overflow:auto}
+.nav .nt{font-size:12px;color:#909399;padding:4px 10px 8px}
+.nav .ni{display:block;padding:7px 10px;border-radius:4px;color:#303133;font-size:13px;border-right:3px solid transparent}
+.nav .ni:hover{background:#f5f7fa}
+.nav .ni.on{background:#ecf5ff;color:#409eff;border-right-color:#409eff;font-weight:500}
+.nav .bd{display:block;font-size:11px;margin-top:1px;color:#909399}
+.nav .bd.ok{color:#67c23a}.nav .bd.warn{color:#e6a23c}.nav .bd.err{color:#f56c6c}
+
+.card{background:#fff;border:1px solid #e4e7ed;border-radius:4px;margin-bottom:16px}
+.card>.h{padding:11px 16px;border-bottom:1px solid #ebeef5;font-weight:600;display:flex;justify-content:space-between;align-items:center}
+.card>.h .r{display:flex;gap:8px;align-items:center;font-weight:400}
+.card>.b{padding:16px}
+.card.new{border-color:#b3d8ff}
+.card.new>.h{background:#f4f9ff}
+
+table.t{width:100%;border-collapse:collapse;font-size:13px}
+table.t th{background:#fafafa;padding:8px 10px;border:1px solid #ebeef5;text-align:left;font-weight:500;color:#606266}
+table.t td{padding:7px 10px;border:1px solid #ebeef5;vertical-align:middle}
+table.t tr.bad td{background:#fef6f6}
+table.t input,table.t select{padding:3px 7px;font-size:12px}
+
+.tag{display:inline-block;padding:1px 7px;border-radius:3px;font-size:11px;background:#ecf5ff;color:#409eff;border:1px solid #d9ecff;margin:1px 3px 1px 0;white-space:nowrap}
+.tag.g{background:#f0f9eb;color:#67c23a;border-color:#e1f3d8}
+.tag.o{background:#fdf6ec;color:#e6a23c;border-color:#faecd8}
+.tag.r{background:#fef0f0;color:#f56c6c;border-color:#fde2e2}
+.tag.gray{background:#f4f4f5;color:#909399;border-color:#e9e9eb}
+.tag.sel{cursor:pointer}.tag.sel:hover{border-color:#409eff}
+.tag.pick{background:#409eff;color:#fff;border-color:#409eff}
+.tag.nw{background:#f4f9ff;color:#409eff;border-color:#b3d8ff}
+
+.btn{padding:6px 14px;border:1px solid #dcdfe6;background:#fff;border-radius:4px;cursor:pointer;font-size:13px}
+.btn:hover{border-color:#409eff;color:#409eff}
+.btn.pri{background:#409eff;border-color:#409eff;color:#fff}
+.btn.pri:hover{opacity:.85;color:#fff}
+.btn.sm{padding:3px 9px;font-size:12px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.lnk{border:0;background:transparent;color:#409eff;padding:2px 4px}
+.opv{display:flex;gap:10px;font-size:12px}
+
+.sw{display:inline-block;width:36px;height:19px;border-radius:10px;background:#dcdfe6;position:relative;cursor:pointer;flex:0 0 auto}
+.sw:after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;transition:.2s}
+.sw.on{background:#409eff}.sw.on:after{left:19px}
+
+/* 悬浮注释 */
+.ii{display:inline-block;position:relative;width:14px;height:14px;line-height:14px;text-align:center;border-radius:50%;background:#c0c4cc;color:#fff;font-size:10px;font-style:normal;cursor:help;vertical-align:middle;margin-left:4px;flex:0 0 auto}
+.ii:hover{background:#409eff}
+.ii:after{content:attr(data-tip);position:absolute;left:50%;bottom:150%;transform:translateX(-50%);display:none;white-space:pre-line;width:max-content;max-width:360px;text-align:left;background:#303133;color:#fff;font-size:12px;line-height:1.6;padding:7px 10px;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,.2);z-index:400;pointer-events:none}
+.ii:hover:after{display:block}
+.ii.rt:after{left:auto;right:0;transform:none}
+.tip{font-size:12px;color:#909399;display:flex;gap:5px;align-items:flex-start;margin-top:6px}
+.tip:before{content:"ⓘ";color:#409eff;flex:0 0 auto}
+.tip.err{color:#f56c6c}.tip.err:before{content:"⚠";color:#f56c6c}
+.tip.warn{color:#e6a23c}.tip.warn:before{content:"⚠";color:#e6a23c}
+
+/* 模块内部不再套小模块：标题降级为字段分组标题，内容直接平铺 */
+.sec{margin:0 0 12px;border:0}
+.sec:last-child{margin-bottom:0}
+.sec>.sh{padding:8px 0 5px;background:none;border-bottom:1px solid #ebeef5;font-weight:600;font-size:13px;color:#303133;display:flex;justify-content:space-between;align-items:center}
+.sec>.sb{padding:10px 0 0}
+.sec .sec{margin:4px 0 10px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+/* 字段行：标签左对齐（字段名同一起点）+ 固定宽度控件区（输入框同起同止） */
+.fi{display:flex;gap:10px;margin-bottom:8px;align-items:flex-start}
+.fi:last-child{margin-bottom:0}
+.fi>label{flex:0 0 150px;text-align:left;color:#606266;font-size:13px;padding-top:6px;line-height:1.45}
+.fi>label .rq{color:#f56c6c;margin-right:3px}
+.fi>.c{flex:1;min-width:0;max-width:339px;position:relative}
+.fi>.c>input,.fi>.c>select,.fi>.c>textarea{width:100%}
+.fi>.c>.seg{display:flex;width:100%}
+.fi>.c>.seg button{flex:1}
+/* 正文区不展示任何注释：ⓘ 图标、灰色说明文字、非校验类提示全部不渲染出来 */
+#main .ii,#main .tip{display:none}
+/* 需要并排放两个控件的行：铺满整行 */
+.fi>.c.wide{max-width:none;padding-right:0}
+.fi>.c.wide>.ii{position:static;margin-left:4px}
+/* 第一列略宽，第二列整体往右一点，不做等分居中 */
+.g2{display:grid;grid-template-columns:1.16fr 1fr;gap:0 20px}
+/* 两栏并排的子模块（Picture / Video） */
+.g2c{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+.g2c>.sec{margin:0}
+/* Cap 表居中收窄，别横贯整屏 */
+.capw{max-width:1000px;margin:0 auto}
+/* 表格内的富文本输入框 */
+.rt{min-height:26px;border:1px solid #dcdfe6;border-radius:4px;padding:3px 7px;font-size:12px;line-height:1.5;background:#fff}
+.rt:focus{outline:0;border-color:#409eff}
+table.t td.ct,table.t th.ct{text-align:center}
+table.t td.brk{word-break:break-all}
+.seg{display:inline-flex;border:1px solid #dcdfe6;border-radius:4px;overflow:hidden}
+.seg button{padding:5px 12px;border:0;border-right:1px solid #dcdfe6;background:#fff;cursor:pointer;font-size:13px}
+.seg button:last-child{border-right:0}
+.seg button.on{background:#409eff;color:#fff}
+textarea,input[type=text],input[type=number],input[type=date],select{width:100%;padding:5px 9px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;font-family:inherit}
+textarea.mono{font-family:Menlo,Consolas,monospace;font-size:12px;line-height:1.7}
+.chk{display:inline-flex;align-items:center;gap:4px;font-size:12px;margin:2px 10px 2px 0;cursor:pointer}
+.ro{background:#fafafa;border:1px solid #ebeef5;border-radius:4px;padding:10px 12px}
+.pv{background:#2d3748;color:#e2e8f0;border-radius:4px;padding:9px 11px;font-family:Menlo,Consolas,monospace;font-size:12px;line-height:1.75;word-break:break-all;white-space:pre-wrap}
+.pv em{color:#f6ad55;font-style:normal}
+.pv b{color:#68d391;font-weight:400}
+.sum{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:#606266;align-items:center}
+.sum b{font-size:15px;color:#303133;font-weight:600}
+
+/* 三级 Geo 选择器 */
+.geo3{display:grid;grid-template-columns:250px 1fr 1.15fr;border:1px solid #ebeef5;border-radius:4px;overflow:hidden;min-height:390px}
+.geo3>div{border-right:1px solid #ebeef5;display:flex;flex-direction:column}
+.geo3>div:last-child{border-right:0}
+.geo3 .ch{padding:7px 10px;background:#fafafa;border-bottom:1px solid #ebeef5;font-size:12px;color:#606266;display:flex;justify-content:space-between;align-items:center;gap:6px}
+.geo3 .cb{flex:1;overflow:auto;max-height:400px}
+/* 列表内的分组小标题，用于国家分区与城市批量操作 */
+.gg{padding:4px 10px;background:#fafbfc;border-bottom:1px solid #f0f2f5;font-size:11px;color:#909399;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:1}
+.gi{padding:6px 10px;border-bottom:1px solid #f5f7fa;font-size:13px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:6px}
+.gi:hover{background:#f5f7fa}
+.gi.on{background:#ecf5ff;color:#409eff}
+.gi .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gi .mt{font-size:11px;color:#909399;flex:0 0 auto}
+.gi.on .mt{color:#79bbff}
+.srch{margin:0;border:0;border-bottom:1px solid #ebeef5;border-radius:0;padding:6px 10px;font-size:12px}
+.srch:focus{outline:0;background:#f5f7fa}
+.foot{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e4e7ed;padding:9px 24px;display:flex;justify-content:center;align-items:center;z-index:60}
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;overflow:auto}
+.dlg{background:#fff;border-radius:4px;width:720px;max-width:100%;margin:60px auto}
+.dlg.w960{width:960px}
+.dlg>.h{padding:13px 18px;border-bottom:1px solid #e4e7ed;font-weight:600;display:flex;justify-content:space-between}
+.dlg>.b{padding:18px;max-height:70vh;overflow:auto}
+.dlg>.f{padding:11px 18px;border-top:1px solid #e4e7ed;display:flex;justify-content:flex-end;gap:10px}
+</style>
+</head>
+<body>
+<div class="hd">
+  <h1>Create Offer</h1>
+  <div class="ctx" id="ctx"></div>
+  <a class="btn sm" style="margin-left:auto" onclick="openLog()">Change Log</a>
+  <a class="btn sm" onclick="toast('Prototype only: back to the old Create Offer page')">Old Page</a>
+</div>
+<div class="wrap">
+  <div class="main" id="main"></div>
+  <div class="nav" id="nav"></div>
+</div>
+<div class="foot" id="foot"></div>
+<div id="layer"></div>
+<div id="layer2"></div>
+
+<script>
+/* ============================================================
+   模块与字段清单依据「offer重构」PRD（alidocs ydxXB52LJq73MzZrsQkxQdk1WqjMp697）：
+   现有字段一个不删，只做模块整合 + 新增 tracking link 生成解析与变更日志。
+   ============================================================ */
+const SECS = [
+  { k: 'adv',        name: 'Adv & Package & Campaign', note: 'Campaign + Package info merged' },
+  { k: 'basic',      name: 'Basic Info',               note: 'Basic + operation info merged' },
+  { k: 'settle',     name: 'Settlement Info',          note: 'Adv / Channel settlement split' },
+  { k: 'cap',        name: 'Cap Info',                 note: 'Per-item OPEN switch' },
+  { k: 'target',     name: 'Target Info',              note: 'Quick geo select + lazy region / city loading' },
+  { k: 'tracking',   name: 'Tracking Info',            note: 'Generate from Adv Link + parsing', nw: 1 },
+  { k: 'creative',   name: 'Creative Info',            note: 'Relaxed checks + auto-crop' },
+  { k: 'integration',name: 'Integration Info',         note: 'Auto-S2S click cap + cross-offer BT' },
+];
+
+const PLATFORMS = { android: 'Android', ios: 'iOS' };
+/* Offer Type 现网实际只用 direct，其余（Indirect API 等）是历史枚举，本版只留 direct */
+const OFFER_TYPES = { direct: 'Direct' };
+/* 是否拉活：UA 拉新 / RT 拉活，仅报表维度 */
+const REACT_TYPES = { ua: 'UA', rt: 'RT' };
+const SETTLE_TYPES = { cpi: 'CPI', cpe: 'CPE', cps: 'CPS' };
+const CHN_SETTLE_TYPES = { cpi: 'CPI', cpe: 'CPE' };
+/* 手绘稿：Target Device 为 phone / tablet / all */
+const DEVICE_MODES = { all: 'All', phone: 'Phone', tablet: 'Tablet' };
+const TRACK_WAYS = { s2s: 'S2S', sdk: 'SDK', pixel: 'Pixel' };
+const LINK_TYPES = { normal: 'Normal', deeplink: 'Deeplink', onelink: 'OneLink', ctv: 'CTV', vta: 'VTA' };
+/* Track Link Type：CTA 点击归因 / VTA 展示归因 / Mix 混合 */
+const TRACK_LINK_TYPES = { cta: 'CTA', vta: 'VTA', mix: 'Mix' };
+const MMPS = { appsflyer: 'AppsFlyer', adjust: 'Adjust', branch: 'Branch', singular: 'Singular', none: 'None / Self-attributed' };
+const TRACK_DOMAINS = ['track.mobvista.com', 'trk.mobvista.com', 'click.mobvista.com'];
+/* Adv Settlement Events 的两个枚举，取自现网 */
+const MATCH_TYPES = { uniq: 'uniq', multi: 'multi' };
+const ATTR_WINDOWS = { lifetime: 'lifetime', '24h': '24 hours', '7d': '7 days', '14d': '14 days', '30d': '30 days' };
+const CATEGORIES = { game: 'Game', social: 'Social', tool: 'Tool', finance: 'Finance', ecom: 'E-Commerce', video: 'Video' };
+/* 素材标准尺寸，用于「auto」自动裁剪 */
+const STD_DIMS = ['1200x627', '1200x628', '640x640', '512x512', '300x250'];
+
+/* 系统内已存在的 offer name / uuid，用于重名校验与序号推荐（原型 mock 一批） */
+const EXIST_NAMES = ['Xanh SM - IOS - 55', 'Xanh SM - IOS - 54', 'Domino Star - AND - 11', 'Domino Star - AND - 12'];
+const EXIST_UUIDS = ['sm_xanh_ios_vn_dp', 'domino_star_and_11', 'domino_star_and_12', 'nep_domino_br_and_iaa'];
+
+/* Geo 一级：国家。原型只保留 BR / MX 两个示例国家，都带 region / city 三级字典 */
+const COUNTRY_LIST = [['US','United States'],['UK','United Kingdom'],['BR','Brazil'],['MX','Mexico'],['ID','Indonesia'],
+  ['IN','India'],['VN','Vietnam'],['TH','Thailand'],['PH','Philippines'],['SA','Saudi Arabia']];
+/* 快捷勾选只展示国家英文简称；BR / MX 带 region / city 字典，其余演示为无字典 */
+const TOP_GEOS = ['US', 'UK', 'BR', 'MX', 'ID', 'IN', 'VN', 'TH', 'PH', 'SA'];
+const CNAME = {}; COUNTRY_LIST.forEach(([c, n]) => { CNAME[c] = n; });
+const ALL_COUNTRIES = Object.keys(CNAME);
+
+/* region / city 字典（真实数据，取自 3S region/city 字典表；每州只放样例城市，total 是该州真实城市总数） */
+const GEO_DATA = {"BR":{"regions":[{"rid":"10120","short":"ba","name":"bahia","total":805,"cities":[{"id":"308843","name":"abadia"},{"id":"264354","name":"abaira"},{"id":"264456","name":"abare"},{"id":"308863","name":"abelhas"},{"id":"308884","name":"abobora"},{"id":"252352","name":"abrantes"},{"id":"143010","name":"acajutiba"},{"id":"308903","name":"acu da torre"},{"id":"308922","name":"acudina"},{"id":"308945","name":"acupe"},{"id":"308966","name":"adro de sao goncalo"},{"id":"143011","name":"adustina"}]},{"rid":"10121","short":"ce","name":"ceara","total":649,"cities":[{"id":"317989","name":"abaiara"},{"id":"318010","name":"abilio martins"},{"id":"318030","name":"acarape"},{"id":"64142","name":"acarau"},{"id":"63769","name":"acopiara"},{"id":"318049","name":"acude dos pinheiros"},{"id":"318071","name":"acudinho dos costas"},{"id":"318092","name":"adrianopolis"},{"id":"143215","name":"agua verde"},{"id":"318112","name":"aguai"},{"id":"318132","name":"aguas belas"},{"id":"143216","name":"aiuaba"}]},{"rid":"3985","short":"mg","name":"minas gerais","total":1509,"cities":[{"id":"143525","name":"abadia dos dourados"},{"id":"63583","name":"abaete"},{"id":"336288","name":"abaete dos mendes"},{"id":"336305","name":"abaiba"},{"id":"143526","name":"abre campo"},{"id":"336323","name":"abreus"},{"id":"143527","name":"acaiaca"},{"id":"143528","name":"acucena"},{"id":"143529","name":"acurui"},{"id":"336340","name":"adao colares"},{"id":"264518","name":"agua boa"},{"id":"336358","name":"agua branca de minas"}]},{"rid":"2970","short":"pr","name":"parana","total":789,"cities":[{"id":"307227","name":"abapa"},{"id":"144323","name":"abatia"},{"id":"307267","name":"acungui"},{"id":"307287","name":"adhemar de barros"},{"id":"144324","name":"adrianopolis"},{"id":"307307","name":"agua azul"},{"id":"144325","name":"agua boa"},{"id":"307328","name":"agua branca"},{"id":"592823","name":"agua mineral"},{"id":"307350","name":"agua vermelha"},{"id":"144326","name":"agudos do sul"},{"id":"307370","name":"alecrim"}]},{"rid":"10131","short":"pe","name":"pernambuco","total":389,"cities":[{"id":"144178","name":"abreu e lima"},{"id":"144179","name":"afogados da ingazeira"},{"id":"356066","name":"afranio"},{"id":"144180","name":"agrestina"},{"id":"356071","name":"agua fria"},{"id":"252238","name":"agua preta"},{"id":"144181","name":"aguas belas"},{"id":"722050","name":"alagoinha"},{"id":"356076","name":"albuquerque ne"},{"id":"356080","name":"algodoes"},{"id":"144182","name":"alianca"},{"id":"252370","name":"altinho"}]},{"rid":"3971","short":"rj","name":"rio de janeiro","total":243,"cities":[{"id":"144544","name":"abarracamento"},{"id":"316173","name":"afonso arinos"},{"id":"316192","name":"andrade pinto"},{"id":"62704","name":"angra dos reis"},{"id":"144545","name":"aperibe"},{"id":"50982","name":"araruama"},{"id":"144546","name":"areal"},{"id":"144547","name":"armacao dos buzios"},{"id":"144548","name":"arraial do cabo"},{"id":"144549","name":"arrozal"},{"id":"316212","name":"avelar"},{"id":"144550","name":"bacaxa"}]},{"rid":"10137","short":"rs","name":"rio grande do sul","total":1021,"cities":[{"id":"144707","name":"acegua"},{"id":"320991","name":"acoita cavalo"},{"id":"321010","name":"afonso rodrigues"},{"id":"321032","name":"agua santa"},{"id":"321052","name":"aguapes"},{"id":"264127","name":"aguas claras"},{"id":"144708","name":"agudo"},{"id":"144709","name":"ajuricaba"},{"id":"321071","name":"albardao"},{"id":"252322","name":"alecrim"},{"id":"62723","name":"alegrete"},{"id":"144710","name":"alegria"}]},{"rid":"726","short":"sp","name":"sao paulo","total":872,"cities":[{"id":"39685","name":"adamantina"},{"id":"145078","name":"adolfo"},{"id":"304072","name":"agisse"},{"id":"145079","name":"agua vermelha"},{"id":"51017","name":"aguai"},{"id":"145080","name":"aguas da prata"},{"id":"50993","name":"aguas de lindoia"},{"id":"264420","name":"aguas de santa barbara"},{"id":"145081","name":"aguas de sao pedro"},{"id":"63571","name":"agudos"},{"id":"145082","name":"agulha"},{"id":"145083","name":"ajapi"}]}]},"MX":{"regions":[{"rid":"9717","short":"chp","name":"chiapas","total":1447,"cities":[{"id":"344259","name":"10 de abril"},{"id":"344275","name":"11 de abril"},{"id":"344291","name":"11 de julio"},{"id":"344307","name":"13 de septiembre"},{"id":"344323","name":"14 de febrero"},{"id":"1407186","name":"14 de septiembre"},{"id":"344337","name":"15 de abril"},{"id":"344354","name":"15 de agosto"},{"id":"344371","name":"15 de enero"},{"id":"344387","name":"15 de junio"},{"id":"344402","name":"15 de mayo"},{"id":"344418","name":"15 de septiembre"}]},{"rid":"9728","short":"gua","name":"guanajuato","total":2781,"cities":[{"id":"352801","name":"20 de noviembre"},{"id":"352814","name":"3 villas"},{"id":"156745","name":"abasolo"},{"id":"352828","name":"abel rico mendoza"},{"id":"156746","name":"acambaro"},{"id":"352842","name":"acatlan"},{"id":"352856","name":"adjuntas"},{"id":"352870","name":"adjuntas de san jose"},{"id":"352886","name":"adjuntas del monte"},{"id":"352899","name":"adolfo gutierrez"},{"id":"352915","name":"adolfo ruiz cortinez"},{"id":"352929","name":"agriduz"}]},{"rid":"9738","short":"jal","name":"jalisco","total":1304,"cities":[{"id":"341586","name":"2 de febrero"},{"id":"341602","name":"21 de marzo"},{"id":"341619","name":"21 de noviembre"},{"id":"341636","name":"5 minas"},{"id":"341653","name":"abrevadero"},{"id":"341670","name":"acasico"},{"id":"341687","name":"acaspoluca"},{"id":"341704","name":"acaspulco"},{"id":"341720","name":"acatepulco"},{"id":"156881","name":"acatic"},{"id":"156882","name":"acatlan de juarez"},{"id":"341737","name":"acuario"}]},{"rid":"8075","short":"mex","name":"mexico","total":1969,"cities":[{"id":"325852","name":"10 de agosto"},{"id":"325871","name":"15 de agosto"},{"id":"325889","name":"1ra de marzo"},{"id":"325907","name":"1ro de octubre"},{"id":"325925","name":"2 de septiembre"},{"id":"325943","name":"20 de noviembre"},{"id":"325963","name":"23 de noviembre"},{"id":"325980","name":"2da seccion electricistas"},{"id":"326001","name":"2da. manzana 4 cruces"},{"id":"326019","name":"2o. agrupamiento de seg. pub. est. tepetlixpa"},{"id":"326038","name":"3 cruces"},{"id":"326057","name":"6a mza. san miguel de la victoria"}]},{"rid":"9748","short":"mic","name":"michoacan","total":3118,"cities":[{"id":"345069","name":"20 de noviembre"},{"id":"389166","name":"4 caminos"},{"id":"157118","name":"abadiano"},{"id":"345085","name":"abrevadero"},{"id":"345100","name":"acachuen"},{"id":"345117","name":"acaten"},{"id":"345134","name":"acatlan"},{"id":"345153","name":"acebuches"},{"id":"345169","name":"achotan"},{"id":"345182","name":"acopeo"},{"id":"345200","name":"acucha de cajoncitos"},{"id":"345216","name":"acuicho"}]},{"rid":"9756","short":"oax","name":"oaxaca","total":2530,"cities":[{"id":"352847","name":"12 de julio"},{"id":"352861","name":"12 de mayo"},{"id":"352875","name":"14 de febrero"},{"id":"352889","name":"19 de abril"},{"id":"352902","name":"24 de julio"},{"id":"352917","name":"28 de mayo"},{"id":"352930","name":"28 de noviembre"},{"id":"352944","name":"5 de mayo"},{"id":"352958","name":"6 de enero"},{"id":"352971","name":"9 de mayo"},{"id":"352985","name":"abajo de alazan"},{"id":"352999","name":"abasolo"}]},{"rid":"9759","short":"pue","name":"puebla","total":1709,"cities":[{"id":"334639","name":"2 rios viejo"},{"id":"334658","name":"21 de marzo"},{"id":"334674","name":"2o. sector llano"},{"id":"334692","name":"3 cabezas"},{"id":"334710","name":"3 cruces"},{"id":"334727","name":"abelardo l. rodriguez"},{"id":"157388","name":"acajete"},{"id":"334745","name":"acalapa"},{"id":"334763","name":"acalocotla"},{"id":"334780","name":"acamalota"},{"id":"319397","name":"acamique"},{"id":"157389","name":"acapulco"}]},{"rid":"9781","short":"ver","name":"veracruz","total":2257,"cities":[{"id":"320526","name":"16 de septiembre"},{"id":"320546","name":"18 de marzo"},{"id":"320564","name":"2 bocas"},{"id":"320583","name":"2 caminos"},{"id":"320602","name":"2 rios"},{"id":"320621","name":"20 de noviembre"},{"id":"29734","name":"boca del rio"},{"id":"35311","name":"coatzacoalcos"},{"id":"297244","name":"poza rica de hidalgo"},{"id":"38641","name":"veracruz"},{"id":"734109","name":"xalapa"},{"id":"14072","name":"xalapa-enriquez"}]}]}};
+
+/* 同一地点的多个字典编码。取自真实排查记录：只选其中一个会漏量 */
+const CITY_ALIAS = [
+  { pair: ['xalapa', 'xalapa-enriquez'], note: 'measured installs were 129 / 3822, picking only xalapa loses about 97% of that city' },
+  { pair: ['campeche', 'san francisco de campeche'], note: 'measured installs were 1259 / 652, both carry volume' },
+];
+
+
+/* ---------- Tracking Link 宏表 ---------- */
+const MACROS = [
+  { m:'{@info.click_id@}',        d:'3S 点击 ID，MMP 归因回传必须带回',       s:'c8f3a91b2d47', real:0 },
+  { m:'{@info.offer_id@}',        d:'Offer ID',                               s:'3119805',      real:0 },
+  { m:'{@info.offer_uuid@}',      d:'Offer UUID',                             s:'offer_test',   real:0 },
+  { m:'{@info.channel_id@}',      d:'渠道 ID，对应 MMP 的 site id',           s:'chn_a1b2c3',   real:0 },
+  { m:'{@info.sub_id@}',          d:'渠道 SubID（Mob 号）',                   s:'mob2da6aa35c5',real:0 },
+  { m:'{@info.country@}',         d:'点击所在国家，大写 ISO 两位',             s:'BR',           real:0 },
+  { m:'{@info.city@}',            d:'点击所在城市',                           s:'xalapa',       real:0 },
+  { m:'{@info.gaid@}',            d:'Android 广告 ID',                        s:'38400000-8cf0-11bd-b23e-10b96e40000d', real:0 },
+  { m:'{@info.idfa@}',            d:'iOS 广告标识符',                         s:'AEBE52E7-03EE-455A-B3C4-E57283966239', real:0 },
+  { m:'{@info.ip@}',              d:'设备 IP',                                s:'103.28.114.9', real:0 },
+  { m:'{@info.ua@}',              d:'User-Agent',                             s:'Mozilla/5.0 (Linux; Android 13)', real:0 },
+  { m:'{@info.mb_package_v3()@}', d:'透传包名，需 Delivery 开启包名透传',      s:'com.neptune.domino', real:1 },
+  { m:'{@info.theme_name3@}',     d:'透传素材，需 Delivery 开启素材透传',      s:'theme_0731_a', real:1 },
+  { m:'{@info.creative_name3@}',  d:'透传素材名（与 theme_name3 二选一）',     s:'cr_0731_a',    real:1 },
+  { m:'{@info.change_pid()@}',    d:'更换 PID，配合自定义规则「更换PID」动作', s:'pid_0912',     real:1 },
+  { m:'{@info.random_pid()@}',    d:'随机取 PID，配合「禁用PID」动作',         s:'pid_rand_07',  real:1 },
+  { m:'{@info.change_c()@}',      d:'更换 C 参为 yyyymmddhh',                 s:'2026091916',   real:1 },
+];
+const MACRO_SET = new Set(MACROS.map(x => x.m));
+
+/* MMP 校验规则。AppsFlyer 一档依据 Moloco 公开的 AF 链接校验规则 + 3S 已知取值 */
+const MMP_RULES = {
+  appsflyer: {
+    click_host: 'app.appsflyer.com', view_host: 'impression.appsflyer.com', path_rule: 'bundle', agency_param: 'af_prt',
+    required: [
+      { k:'pid', v:'mobvista_int', why:'Media Source, the fixed value 3S uses on AF' },
+      { k:'clickid', v:'{@info.click_id@}', why:'AF posts attribution back with it; missing it breaks attribution' },
+      { k:'c', v:'{name}', why:'Campaign name, an AF reporting dimension' },
+      { k:'af_siteid', v:'{@info.channel_id@}', why:'Sub-channel dimension; without it AF reports cannot break down by channel' },
+      { k:'af_click_lookback', v:'7d', why:'Click attribution window' },
+      { k:'advertising_id', v:'{@info.gaid@}', os:'android', why:'Android device identifier' },
+      { k:'idfa', v:'{@info.idfa@}', os:'ios', why:'iOS device identifier' },
+    ],
+    optional: [{k:'af_ip',v:'{@info.ip@}'},{k:'af_ua',v:'{@info.ua@}'},{k:'af_sub1',v:'{@info.sub_id@}'},{k:'af_prt',v:''}],
+  },
+  adjust:   { click_host:'app.adjust.com', view_host:'view.adjust.com', path_rule:'token', required:[], optional:[] },
+  branch:   { click_host:'app.link',       view_host:'app.link',        path_rule:'token', required:[], optional:[] },
+  singular: { click_host:'sng.link',       view_host:'sng.link',        path_rule:'token', required:[], optional:[] },
+  none:     { click_host:'',               view_host:'',                path_rule:'any',   required:[], optional:[] },
+};
+/* 参数含义：取自各 MMP 官方文档的最简释义，用于「解析与识别」表的含义列 */
+const PARAM_DESC = {
+  pid:'媒体渠道标识（Media Source）', c:'广告系列名称（Campaign）', af_c_id:'广告系列 ID',
+  af_siteid:'子渠道 / 流量位 ID', af_adset:'广告组名称', af_adset_id:'广告组 ID',
+  af_ad:'广告素材名称', af_ad_id:'广告素材 ID', af_channel:'渠道名称',
+  clickid:'点击唯一标识，MMP 据此回传归因', af_click_lookback:'点击归因窗口',
+  af_viewthrough_lookback:'展示归因窗口', advertising_id:'Android 广告标识（GAID）',
+  idfa:'iOS 广告标识（IDFA）', idfv:'iOS 供应商标识（IDFV）', af_ip:'设备公网 IP',
+  af_ua:'设备 User-Agent', af_prt:'代理商标识（Agency）', is_retargeting:'是否再营销（拉活）',
+  af_dp:'深度链接落地地址', af_web_dp:'Web 回落地址', af_r:'点击后跳转地址', af_lang:'语言',
+  af_sub1:'自定义透传参数 1', af_sub2:'自定义透传参数 2', af_sub3:'自定义透传参数 3',
+  af_sub4:'自定义透传参数 4', af_sub5:'自定义透传参数 5',
+  tracker:'Adjust 渠道 tracker token', campaign:'广告系列名称', adgroup:'广告组名称',
+  creative:'广告素材名称', gps_adid:'Android 广告标识（Adjust）', s2s:'服务端上报标识',
+  click_id:'点击唯一标识', cid:'点击唯一标识', cost:'点击 / 安装成本', cost_currency:'成本币种',
+  label:'自定义标签', channel:'渠道名称', publisher:'子渠道标识',
+};
+const LINK_ERR = {
+  empty: 'Tracking Link is required before the offer can run',
+  scheme: (s) => 'Scheme must be https, got ' + s,
+  host: (h, w, m) => 'Host「' + h + '” does not match the selected Third Party (' + m + '); expected ' + w,
+  path_bundle: (p, w) => 'Path「' + p + '” does not match the package; the AppsFlyer path should be ' + w,
+  path_empty: 'Path is empty; the AppsFlyer path should be the package name or idXXXXXXXX',
+  macro: (m) => 'Macro “' + m + '” is not in the 3S macro list; use a supported macro or a hardcoded value',
+  missing: (ks) => 'Missing required parameters: ' + ks.join('、'),
+  empty_val: (ks) => 'Empty parameter value: ' + ks.join('、'),
+  os_mismatch: (k, os) => 'param ' + k + ' only applies to ' + PLATFORMS[os] + ' does not match the current Platform',
+};
+
+/* ============================================================
+   mock 数据。字段名沿用 3S 现有命名，便于研发对照
+   ============================================================ */
+const form = {
+  adv: { advertiser:'Neptune Games', related_campaign:'CAMP_2026_domino', related_invoice:'INV-2026-0918',
+    package_name:'com.neptune.domino',
+    /* 折叠区：Package Info（对齐旧版 Promotion Info 的字段，PRD 要求默认收起） */
+    app_name:'Domino Star', app_short:'domino', adv_short:'nep',
+    store_url:'https://play.google.com/store/apps/details?id=com.neptune.domino',
+    preview_link:'https://play.google.com/store/apps/details?id=com.neptune.domino',
+    app_id:'', category:'game', app_size:'48', min_os:'8.0', app_rate:'4.6',
+    kids_centric:0, app_desc:'Classic domino battles', icon_url:'campaign_icon_512.png',
+    /* Advertiser 上挂的归属人，Basic Info 的 PM / BD 从这里继承初值 */
+    adv_pm:'yongqiang.song', adv_bd:'wang.lei' },
+  basic: { offer_id:'(generated after creation)', offer_name:'DOMINO STAR - AND - 13', offer_uuid:'', offer_type:'direct',
+    promote_start:'2026-09-20', promote_end:'2026-12-31', promote_now:0,
+    pm:'yongqiang.song', bd:'wang.lei', pm_touched:0,
+    is_reactivation:'ua', channel_white_list:'chn_a1b2c3\nchn_d4e5f6' },
+  /* 手绘稿：Adv Settlement / Channel Settlement 两块，各自带 event 表与 Note */
+  settle: {
+    /* Adv Set：结算口径 + event 级价格表 */
+    adv_settle_type:'cpi',
+    adv_events:[
+      { name:'install',     real:0.70, price:0.62, match:'uniq', window:'lifetime' },
+      { name:'af_purchase', real:2.10, price:1.80, match:'uniq', window:'7d' },
+    ],
+    /* Channel Set：结算口径 + event 级 payout 表 */
+    chn_settle_type:'cpi',
+    chn_events:[{ name:'install', payout:0.35, note:'' }] },
+  cap: { budget_type:'daily',
+    adv_conv_cap:{ on:0, val:20000 },
+    chn_conv_cap:{ on:0, val:18000 },
+    chn_click_cap:{ on:1, val:null },
+  },
+  target: {
+    countries: ['BR', 'MX'],
+    global: 0,
+    /* region = {国家: {region_id: 'all' | [city_id,...]}}；city 字段由它派生，不单独存
+       这里刻意让 MX veracruz 只选了 xalapa 没选别名码 xalapa-enriquez，用来演示漏量提醒 */
+    region: { BR: { '726': 'all', '3971': ['62704', '316192'] }, MX: { '9781': ['734109', '38641'] } },
+    device: 'all', platform: 'android',
+    version_from: '8.0', version_to: '',
+    /* 两级按需开关：不需要州 / 城市定向的 offer 不加载对应字典，避免页面卡顿 */
+    need_region: 1,
+    need_city: 1,
+    cancel_b_limit: 0,  /* 取消 B 类渠道 Region / City 定向限制 */
+  },
+  creative: { pictures:[{ id:'p1', n:'1200x627_a.jpg', s:'1200x627', src:'manual upload' },
+                        { id:'p2', n:'raw_1080x540.jpg', s:'1080x540', src:'manual upload' }],
+    videos:[{ id:'v1', n:'720x1280_15s.mp4', s:'720x1280 / 15s', src:'manual upload' }] },
+  tracking: { track_link_domain:'track.mobvista.com', adv_impression_link:'',
+    /* 手绘稿新增：先贴上游渠道给的 Adv Link，再点 Generate 出我方 tracking link */
+    adv_link:'https://app.appsflyer.com/com.neptune.domino?pid=mobvista_int&af_prt=Mobvista',
+    tracking_link:'https://app.appsflyer.com/com.neptune.domino?pid=mobvista_int&c={name}&advertising_id={@info.gaid@}&af_siteid={@info.site_id@}',
+    track_way:'s2s', third_party:'appsflyer', track_link_type:'cta', link_type:'normal',
+    async_flow:0, async_channel_whitelist:'', store_link:'', is_agency:1, af_prt:'Mobvista',
+    /* Math Random：四个可随机的维度，勾中后用 {@([..][parseInt(Math.random()*n)])@} 写入链接 */
+    rand: {
+      domain:   { on:0, list:['shorttv.onelink.me/FOV6', 'go.onelink.me/FOV6'] },
+      agency:   { on:0, list:[] },
+      pid:      { on:0, list:['mobvista_int', 'nativex_int'] },
+      af_adset: { on:0, list:[] },
+    } },
+  integration: { auto_channel:0, auto_channel_list:'chn_a1b2c3', api_doc_ack:0,
+    /* 手绘稿 + 调研反馈：建单模块支持顺手调自动对接渠道的 click cap 与跨 offer BT */
+    adjust_click_cap:1, click_cap:50000, cross_offer_bt:0, cross_offer_bt_group:'nep_domino_group' },
+};
+
+/* 变更日志：offer 维度所有模块的改动都进这里（PRD：新增 offer 维度变更日志集合） */
+const LOGS = [
+  { t:'2026-09-22 17:40', who:'yongqiang.song', sec:'Settlement Info', msg:'Channel Set Type: CPE → CPI (editable after creation, no need to rebuild the offer)' },
+  { t:'2026-09-22 17:36', who:'yongqiang.song', sec:'Basic Info', msg:'Offer UUID generated from Offer Name: domino_star_and_13' },
+];
+function pushLog(sec, msg) {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  LOGS.unshift({ t: d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()),
+    who: form.basic.pm || 'me', sec, msg });
+}
+
+/* 结算口径派生值。Upstream settles on Adv Settlement Type 取，下游按 Channel Settlement Type 取，
+   两边各自可能落在 install 或某个 event 上，所以统一从这里读，避免各处口径不一致 */
+/* 对下游只有一个结算配置：Channel 侧固定一行，Event Name 由 Channel Set Type 决定，只允许填 payout 与对外 Note */
+function chnEventName() {
+  const s = form.settle;
+  if (s.chn_settle_type === 'cpi') return 'install';
+  const e = s.adv_events.find((x) => x.name !== 'install') || s.adv_events[0] || {};
+  return e.name || 'install';
+}
+function syncChnEvents() {
+  const s = form.settle, o = s.chn_events[0] || {};
+  s.chn_events = [{ name: chnEventName(), payout: o.payout == null ? null : o.payout, note: o.note || '' }];
+}
+/* 结算行：上游 / 下游各自按自己的口径认定哪一行参与结算 */
+const advPayIdx = () => {
+  const s = form.settle;
+  const i = s.adv_settle_type === 'cpi'
+    ? s.adv_events.findIndex((x) => x.name === 'install')
+    : s.adv_events.findIndex((x) => x.name !== 'install');
+  return i >= 0 ? i : (s.adv_events.length ? 0 : -1);
+};
+const chnPayIdx = () => (form.settle.chn_events.length ? 0 : -1);
+const advRow = () => form.settle.adv_events[advPayIdx()] || {};
+const chnRow = () => form.settle.chn_events[chnPayIdx()] || {};
+const advConvName = () => advRow().name || 'install';
+const chnConvName = () => chnRow().name || chnEventName();
+const advRealPrice = () => advRow().real;
+const chnPrice = () => chnRow().payout;
+/* 上下游结算口径的组合提醒：不在正文展示，进导航摘要与创建前确认 */
+function settleMix() {
+  const s = form.settle, a = s.adv_settle_type, c = s.chn_settle_type, out = [];
+  if (a === 'cpi' && c === 'cpe') out.push('Upstream settles on install while downstream settles on ' + chnConvName() + ': the cost of event volume cannot be billed to the advertiser, confirm this is intended');
+  if (a === 'cpe' && c === 'cpi') out.push('Upstream settles on ' + advConvName() + ' while downstream settles on install: swings in the install → event rate eat into margin directly');
+  if (a === 'cpe' && c === 'cpe' && advConvName() !== chnConvName())
+    out.push('Upstream and downstream settle on different events (' + advConvName() + ' vs ' + chnConvName() + '); margin needs manual review');
+  if (a === 'cps') out.push('Upstream is CPS revenue share: margin moves with order value, so a fixed payout needs manual review');
+  return out;
+}
+/* OPEN = 不设上限：开着时该 cap 不生效（无数值）；关掉才是限制模式，取输入的数值 */
+const capVal = (o) => (o && !o.on) ? o.val : null;
+/* 打开 OPEN 即清空数值并锁定输入框 */
+function capToggle(path, v) {
+  setv(path + '.on', v ? 1 : 0);
+  if (v) setv(path + '.val', null);
+  pushLog('Cap Info', path.replace('cap.', '') + ' OPEN → ' + (v ? 'on (no limit)' : 'off (limited)'));
+  render();
+}
+
+/* ============================================================
+   工具
+   ============================================================ */
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const lines = (s) => String(s || '').split(/[\n,;，、\s]+/).map((x) => x.trim()).filter(Boolean);
+const rows = (s) => String(s || '').split('\n').map((x) => x.trim()).filter(Boolean);
+function ii(t, c) { return '<i class="ii' + (c ? ' ' + c : '') + '" data-tip="' + esc(t) + '">i</i>'; }
+function toast(m, t) {
+  const d = document.createElement('div');
+  const c = t === 'err' ? ['#fef0f0','#fde2e2','#f56c6c'] : t === 'warn' ? ['#fdf6ec','#faecd8','#e6a23c'] : ['#f0f9eb','#e1f3d8','#67c23a'];
+  d.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:300;background:' + c[0]
+    + ';border:1px solid ' + c[1] + ';color:' + c[2] + ';padding:9px 18px;border-radius:4px;font-size:13px;box-shadow:0 2px 12px rgba(0,0,0,.12)';
+  d.textContent = m; document.body.appendChild(d); setTimeout(() => d.remove(), 2600);
+}
+function closeLayer() { $('#layer').innerHTML = ''; }
+function closeLayer2() { $('#layer2').innerHTML = ''; }
+let _ok = null;
+function confirmBox(title, body, onOk) {
+  _ok = onOk;
+  $('#layer').innerHTML = '<div class="mask" onclick="if(event.target===this)closeLayer()"><div class="dlg">'
+    + '<div class="h">' + esc(title) + '<a onclick="closeLayer()">×</a></div><div class="b">' + (body || '') + '</div>'
+    + '<div class="f"><button class="btn" onclick="closeLayer()">Cancel</button>'
+    + '<button class="btn pri" onclick="_ok&&_ok()">OK</button></div></div></div>';
+}
+function setv(path, v) {
+  const a = path.split('.'); let o = form;
+  for (let i = 0; i < a.length - 1; i++) o = o[a[i]];
+  o[a[a.length - 1]] = v;
+}
+/* 输入类字段统一走它，避免每个字段手写一遍 oninput */
+function inp(path, v, opt) {
+  opt = opt || {};
+  const t = opt.type || 'text';
+  const num = t === 'number';
+  return '<input type="' + t + '" ' + (opt.style ? 'style="' + opt.style + '" ' : '')
+    + (opt.cls ? 'class="' + opt.cls + '" ' : '') + (opt.ph ? 'placeholder="' + esc(opt.ph) + '" ' : '')
+    + (opt.dis ? 'disabled ' : '')
+    + 'value="' + esc(v == null ? '' : v) + '" oninput="setv(\'' + path + '\',' + (num ? 'this.value===\'\'?null:+this.value' : 'this.value') + ');' + (opt.norender ? '' : 'render()') + '">';
+}
+function sel(path, cur, map, opt) {
+  opt = opt || {};
+  return '<select ' + (opt.style ? 'style="' + opt.style + '"' : '') + ' onchange="setv(\'' + path + '\',this.value);render()">'
+    + Object.keys(map).map((k) => '<option value="' + k + '" ' + (String(cur) === k ? 'selected' : '') + '>' + esc(map[k]) + '</option>').join('')
+    + '</select>';
+}
+function segbtn(path, cur, map) {
+  return '<div class="seg">' + Object.keys(map).map((k) =>
+    '<button class="' + (String(cur) === k ? 'on' : '') + '" onclick="setv(\'' + path + '\',\'' + k + '\');render()">' + esc(map[k]) + '</button>').join('') + '</div>';
+}
+function swbtn(path, on, tip) {
+  return '<span class="sw' + (on ? ' on' : '') + '" onclick="setv(\'' + path + '\',' + (on ? 0 : 1) + ');render()"></span>' + (tip ? ii(tip) : '');
+}
+/* 枚举字段统一用复选框呈现：勾一个即切换，语义上仍是单选 */
+function chk(path, cur, map, after) {
+  return '<div class="row">' + Object.keys(map).map((k) => '<label class="chk"><input type="checkbox" '
+    + (String(cur) === k ? 'checked' : '') + ' onchange="setv(\'' + path + '\',\'' + k + '\');render()">'
+    + esc(map[k]) + '</label>').join('') + (after || '') + '</div>';
+}
+/* 布尔字段：是 / 否 两个复选框 */
+function chkBool(path, on, after) {
+  return '<div class="row">'
+    + '<label class="chk"><input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="setv(\'' + path + '\',1);render()">Yes</label>'
+    + '<label class="chk"><input type="checkbox" ' + (on ? '' : 'checked') + ' onchange="setv(\'' + path + '\',0);render()">No</label>'
+    + (after || '') + '</div>';
+}
+/* 布尔字段（改动进变更日志） */
+function chkBoolLog(path, on, sec, label) {
+  const j = (v) => 'setv(\'' + path + '\',' + v + ');pushLog(\'' + sec + '\',\'' + label + ' → ' + (v ? 'Yes' : 'No') + '\');render()';
+  return '<div class="row">'
+    + '<label class="chk"><input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="' + j(1) + '">Yes</label>'
+    + '<label class="chk"><input type="checkbox" ' + (on ? '' : 'checked') + ' onchange="' + j(0) + '">No</label>'
+    + '</div>';
+}
+/* 带日志的开关：Settlement / Cap 这类会影响结算的字段，改动要留痕 */
+function swlog(path, on, sec, label, tip) {
+  return '<span class="sw' + (on ? ' on' : '') + '" onclick="setv(\'' + path + '\',' + (on ? 0 : 1) + ');'
+    + 'pushLog(\'' + sec + '\',\'' + label + ' → ' + (on ? 'off' : 'on') + '\');render()"></span>' + (tip ? ii(tip) : '');
+}
+
+/* ============================================================
+   Offer Name ⇄ UUID 互转与重名推荐
+   调研反馈：两个字段纯手填，既慢又容易撞名；uuid 尾号撞了只能一个个试。
+   规则：name 与 uuid 是大小写 + 分隔符的映射，转换后仍可手工改。
+   ============================================================ */
+function nameToUuid(name) {
+  return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+function uuidToName(uuid) {
+  return String(uuid || '').replace(/_+/g, ' ').trim().toUpperCase();
+}
+/* 一个按钮双向生成：哪边填了就补另一边，两边都填以 Offer Name 为准重算 uuid */
+function autoNameUuid() {
+  const b = form.basic;
+  if (b.offer_name) return syncUuid();
+  if (b.offer_uuid) return syncName();
+  toast('Fill either Offer Name or Offer UUID first', 'warn');
+}
+const nameDup = (n) => !!n && EXIST_NAMES.some((x) => x.toLowerCase() === String(n).toLowerCase());
+const uuidDup = (u) => !!u && EXIST_UUIDS.some((x) => x.toLowerCase() === String(u).toLowerCase());
+/* 尾号推荐：把结尾数字往后推到第一个没被占用的值，省掉「11 占了改 12、12 又占了改 13」的反复试 */
+function nextFree(val, taken) {
+  const m = String(val).match(/^(.*?)(\d+)$/);
+  if (!m) return null;
+  const pre = m[1];
+  let n = +m[2];
+  const has = (v) => taken.some((x) => x.toLowerCase() === v.toLowerCase());
+  for (let i = 0; i < 200; i++) { n++; if (!has(pre + n)) return pre + n; }
+  return null;
+}
+/* Offer Name → UUID。写 uuid 的同时把 name 侧的重名问题一起暴露出来 */
+function syncUuid() {
+  const b = form.basic;
+  if (!b.offer_name) return toast('Fill Offer Name first', 'warn');
+  let u = nameToUuid(b.offer_name);
+  if (uuidDup(u)) {
+    const nx = nextFree(u, EXIST_UUIDS);
+    if (nx) { toast('uuid ' + u + ' already exists, bumped to ' + nx, 'warn'); u = nx; }
+  }
+  b.offer_uuid = u;
+  pushLog('Basic Info', 'Offer UUID generated from Offer Name: ' + u);
+  render();
+}
+function syncName() {
+  const b = form.basic;
+  if (!b.offer_uuid) return toast('Fill Offer UUID first', 'warn');
+  b.offer_name = uuidToName(b.offer_uuid);
+  pushLog('Basic Info', 'Offer Name derived from Offer UUID: ' + b.offer_name);
+  render();
+}
+function useNext(field) {
+  const b = form.basic;
+  const nx = field === 'name' ? nextFree(b.offer_name, EXIST_NAMES) : nextFree(b.offer_uuid, EXIST_UUIDS);
+  if (!nx) return toast('has no trailing number to increment; rename manually', 'warn');
+  if (field === 'name') { b.offer_name = nx; b.offer_uuid = nameToUuid(nx); }
+  else b.offer_uuid = nx;
+  toast('Switched to ' + nx);
+  render();
+}
+
+/* ============================================================
+   三级 Geo 引擎：国家 → Region(州/省) → City
+   数据结构对齐 mob_camp_info：
+     region = {国家: {region_id: 'all' | [city_id,...]}}
+     city   = {国家: [city_id,...]}，等于 region 各数组按 key 顺序拍平
+   这里让 city 由 region 派生而非独立存储，从结构上消灭「region 与 city 口径不一致」——
+   那是现网最常见也最危险的一类脏数据。
+   ============================================================ */
+let g3 = { country: 'BR', rid: null, qRegion: '', qCity: '' };
+
+const regionsOf = (c) => ((GEO_DATA[c] || {}).regions || []);
+const regionById = (c, rid) => regionsOf(c).find((r) => String(r.rid) === String(rid));
+
+/* 某州已选城市数；'all' 按该州真实城市总数计 */
+function stateCount(c, rid) {
+  const v = (form.target.region[c] || {})[rid];
+  if (v === 'all') { const r = regionById(c, rid); return r ? r.total : 0; }
+  return (v || []).length;
+}
+function stateMode(c, rid) {
+  const v = (form.target.region[c] || {})[rid];
+  if (v === 'all') return 'all';
+  if (v && v.length) return 'part';
+  return 'none';
+}
+/* 州 id 按州名字母序排列。
+   注意不能依赖对象的 key 顺序：JS（以及 MySQL 的 JSON 类型）会把整数样式的 key
+   按数值升序重排，排序约定会被吃掉。所以顺序单独用数组维护，落库字符串手工拼。 */
+function orderedRids(c) {
+  const m = form.target.region[c] || {};
+  return Object.keys(m).filter((rid) => m[rid] === 'all' || (m[rid] || []).length)
+    .sort((a, b) => {
+      const ra = regionById(c, a), rb = regionById(c, b);
+      return String(ra ? ra.name : a).localeCompare(String(rb ? rb.name : b));
+    });
+}
+function sortedCities(c, rid, arr) {
+  const r = regionById(c, rid), names = {};
+  (r ? r.cities : []).forEach((x) => { names[x.id] = x.name; });
+  return arr.slice().sort((a, b) => String(names[a] || a).localeCompare(String(names[b] || b)));
+}
+/* region JSON：key 按州名字母序，数组内按城市名字母序（现网排序约定） */
+function buildRegionJSON() {
+  const out = {};
+  form.target.countries.forEach((c) => {
+    const m = form.target.region[c] || {}, keys = orderedRids(c);
+    if (!keys.length) return;
+    out[c] = {};
+    keys.forEach((rid) => { out[c][rid] = m[rid] === 'all' ? 'all' : sortedCities(c, rid, m[rid]); });
+  });
+  return out;
+}
+/* 落库用的字符串：手工拼接以保住 key 顺序，不走 JSON.stringify(对象) */
+function regionJSONString(pretty) {
+  const parts = [];
+  form.target.countries.forEach((c) => {
+    const m = form.target.region[c] || {}, keys = orderedRids(c);
+    if (!keys.length) return;
+    const inner = keys.map((rid) => JSON.stringify(rid) + ':'
+      + (m[rid] === 'all' ? '"all"' : JSON.stringify(sortedCities(c, rid, m[rid]))));
+    parts.push(JSON.stringify(c) + ':{' + (pretty ? '\n    ' + inner.join(',\n    ') + '\n  ' : inner.join(',')) + '}');
+  });
+  return '{' + (pretty ? '\n  ' + parts.join(',\n  ') + '\n' : parts.join(',')) + '}';
+}
+/* city JSON：region 各数组按 key 顺序拍平。'all' 展开为该州全部城市 */
+function buildCityJSON() {
+  const out = {};
+  form.target.countries.forEach((c) => {
+    const m = form.target.region[c] || {}, keys = orderedRids(c);
+    if (!keys.length) return;
+    const arr = [];
+    keys.forEach((rid) => {
+      if (m[rid] === 'all') {
+        const r = regionById(c, rid);
+        (r ? r.cities : []).forEach((x) => arr.push(x.id));   /* 原型只含样例城市 */
+      } else sortedCities(c, rid, m[rid]).forEach((x) => arr.push(x));
+    });
+    out[c] = arr;
+  });
+  return out;
+}
+function geoTotals() {
+  let states = 0, cities = 0;
+  form.target.countries.forEach((c) => orderedRids(c).forEach((rid) => { states++; cities += stateCount(c, rid); }));
+  return { countries: form.target.countries.length, states, cities };
+}
+
+/* 定向校验。按真实排查中反复出现的问题设计 */
+function geoIssues() {
+  const t = form.target, out = [];
+  if (!t.countries.length && !t.global) out.push({ level:'err', msg:'Target Geo is required: select at least one country' });
+  if (t.global && t.countries.length) out.push({ level:'warn', msg:'Global is on, so per-country Region / City targeting will not apply' });
+  if (!t.need_region) return out;   /* 不需要州定向时，不校验 region / city */
+  t.countries.forEach((c) => {
+    const m = t.region[c] || {};
+    const has = Object.keys(m).some((rid) => m[rid] === 'all' || (m[rid] || []).length);
+    if (!has) out.push({ level:'warn', msg: CNAME[c] + '（' + c + ') is in Target Geo without any Region / City, so it runs nationwide' });
+    /* all 州不得再单列城市 */
+    Object.keys(m).forEach((rid) => {
+      if (m[rid] === 'all') return;
+      const r = regionById(c, rid);
+      if (r && (m[rid] || []).length === r.total)
+        out.push({ level:'warn', msg: (r ? r.name : rid) + ' has every city selected one by one; switch to the whole-region option so newly added cities are covered automatically' });
+    });
+    /* 一地多码：选了别名中的一个却漏了另一个 */
+    Object.keys(m).forEach((rid) => {
+      if (m[rid] === 'all') return;
+      const r = regionById(c, rid); if (!r) return;
+      const picked = new Set(m[rid] || []);
+      const nameOf = {}; r.cities.forEach((x) => { nameOf[x.id] = x.name; });
+      CITY_ALIAS.forEach((al) => {
+        const ids = al.pair.map((n) => (r.cities.find((x) => x.name === n) || {}).id).filter(Boolean);
+        if (ids.length !== 2) return;
+        const on = ids.filter((id) => picked.has(id));
+        if (on.length === 1) {
+          const missName = nameOf[ids.find((id) => !picked.has(id))];
+          out.push({ level:'warn', msg:'selected ' + nameOf[on[0]] + ' selected but the alias code for the same place is not: ' + missName + '。' + al.note });
+        }
+      });
+    });
+  });
+  return out;
+}
+
+/* ---------- 三级选择器渲染：国家 / Region / City 三栏一体 ----------
+   国家不再单独放一个复选框模块，而是作为级联的第一栏：
+   勾选 = 加入 Target Geo，点行 = 下钻看它的州。选与看分开，避免误操作。 */
+function geoSelector() {
+  const t = form.target;
+  if (!g3.country || (!CNAME[g3.country])) g3.country = t.countries[0] || 'BR';
+  const cc = g3.country;
+  const selCount = t.countries.length;
+  const regs = regionsOf(cc).filter((r) => !g3.qRegion || r.name.includes(g3.qRegion.toLowerCase()));
+  const curR = g3.rid ? regionById(cc, g3.rid) : null;
+  const cities = curR ? curR.cities.filter((x) => !g3.qCity || x.name.includes(g3.qCity.toLowerCase())) : [];
+  const mode = curR ? stateMode(cc, curR.rid) : 'none';
+  const picked = curR ? ((t.region[cc] || {})[curR.rid] || []) : [];
+  const q = (g3.qCountry || '').trim().toLowerCase();
+
+  let h = '<div class="geo3' + (t.need_region ? '' : ' off') + '" style="grid-template-columns:'
+    + (t.need_region ? (t.need_city ? '250px 1fr 1.15fr' : '250px 1fr') : '1fr') + '">';
+
+  /* ---- 第一栏：国家（勾选即 Target Geo） ---- */
+  h += '<div><div class="ch"><span>① Country / Target Geo</span><span class="row" style="gap:6px">'
+    + '<b>' + selCount + '</b>'
+    + (selCount ? '<a class="small" onclick="clearGeo()">Clear</a>' : '') + '</span></div>'
+    + '<input class="srch" placeholder="Search country code or name" value="' + esc(g3.qCountry) + '" oninput="g3.qCountry=this.value;render()">'
+    + '<div class="cb">';
+  const clist = COUNTRY_LIST.filter(([c, n]) => !q || c.toLowerCase().includes(q) || n.includes(q));
+  h += clist.length ? clist.map(([c]) => countryRow(c, cc)).join('') : '<div class="gi gray">No matching country</div>';
+  h += '</div></div>';
+
+  /* ---- 第二栏：Region。仅在「需要州定向」on时渲染，关掉就完全不加载字典 ---- */
+  const noDict = !GEO_DATA[cc];
+  const notSel = !t.countries.includes(cc);
+  if (t.need_region) {
+    h += '<div><div class="ch"><span>② Region' + (cc ? '· ' + cc : '') + '</span>'
+      + (regionsOf(cc).length ? '<span class="row" style="gap:6px">'
+          + (Object.keys(t.region[cc] || {}).length ? '<a class="small" onclick="clearStates(\'' + cc + '\')">Clear</a>' : '')
+          + '</span>' : '') + '</div>'
+      + (regionsOf(cc).length ? '<input class="srch" placeholder="Search region name" value="' + esc(g3.qRegion) + '" oninput="g3.qRegion=this.value;render()">' : '')
+      + '<div class="cb">';
+    if (notSel) h += '<div class="gi gray">' + cc + ' is not selected as Target Geo yet; tick it to take effect</div>';
+    else if (noDict) h += '<div class="gi gray">No region dictionary for this country; runs nationwide</div>';
+    else if (!regs.length) h += '<div class="gi gray">No matching region</div>';
+    else h += regs.map((r) => {
+        const md = stateMode(cc, r.rid), n = stateCount(cc, r.rid);
+        const on = md === 'all';
+        return '<div class="gi' + (curR && String(curR.rid) === String(r.rid) ? ' on' : '') + '"'
+          + ' onclick="g3.rid=\'' + r.rid + '\';g3.qCity=\'\';render()">'
+          + '<label class="chk" style="margin:0;flex:1" onclick="event.stopPropagation()">'
+          + '<input type="checkbox" ' + (on ? 'checked' : '') + (md === 'part' ? ' data-part="1"' : '')
+          + ' onchange="setAll(\'' + cc + '\',\'' + r.rid + '\',this.checked)">'
+          + '<span class="nm">' + esc(r.name) + '</span></label>'
+          + '<span class="mt">' + (on ? '<span class="tag g">all ' + r.total + '</span>'
+              : md === 'part' ? '<span class="tag o">' + n + '/' + r.total + '</span>'
+              : '<span class="gray">' + r.total + '</span>') + '</span></div>';
+      }).join('');
+    h += '</div></div>';
+  }
+
+  /* ---- 第三栏：City。同样按需渲染 ---- */
+  if (t.need_region && t.need_city) {
+  h += '<div><div class="ch"><span>③ City' + (curR ? ' · ' + esc(curR.name) : '') + '</span>'
+    + (curR ? '<span class="row" style="gap:6px">'
+        + '<label class="chk" style="margin:0"><input type="checkbox" ' + (mode === 'all' ? 'checked' : '')
+        + ' onchange="setAll(\'' + cc + '\',\'' + curR.rid + '\',this.checked)">Whole region</label>'
+        + ii('Same as ticking the region in column two. Runs all ' + curR.total + ' cities, and newly added cities are covered automatically.') + '</span>' : '') + '</div>'
+    + (curR && mode !== 'all' ? '<input class="srch" placeholder="Search city name" value="' + esc(g3.qCity) + '" oninput="g3.qCity=this.value;render()">' : '')
+    + '<div class="cb">';
+  if (!curR) h += '<div class="gi gray">Pick a Region on the left</div>';
+  else if (mode === 'all') h += '<div class="gi gray">Whole-region “all” already covers ' + curR.total + ' cities</div>';
+  else {
+    if (cities.length) h += '<div class="gg">' + (g3.qCity ? 'matched ' + cities.length + ' cities' : 'sample ' + cities.length + ' cities')
+      + '<span><a class="small" onclick="pickCities(\'' + cc + '\',\'' + curR.rid + '\',1)">Select All</a>'
+      + ' <a class="small" onclick="pickCities(\'' + cc + '\',\'' + curR.rid + '\',0)">Invert</a></span></div>';
+    h += cities.map((x) => '<div class="gi"><label class="chk" style="margin:0;flex:1"><input type="checkbox" '
+      + (picked.includes(x.id) ? 'checked' : '') + ' onchange="toggleCity(\'' + cc + '\',\'' + curR.rid + '\',\'' + x.id + '\',this.checked)">'
+      + esc(x.name) + '</label><span class="mt mono">' + x.id + '</span></div>').join('');
+    if (!cities.length) h += '<div class="gi gray">No matching city</div>';
+    h += '<div class="gi gray small">Sample cities in prototype: ' + curR.cities.length + ' of ' + curR.total + ' items</div>';
+  }
+  h += '</div></div>';
+  }
+  h += '</div>';
+  return h;
+}
+/* 国家行：勾选框负责选中，行点击负责下钻 */
+function countryRow(c, cur) {
+  const on = form.target.countries.includes(c);
+  const st = geoStatOf(c);
+  const meta = !GEO_DATA[c] ? '<span class="gray">no dictionary</span>'
+    : st.states ? '<span class="tag">' + st.states + 'r/' + st.cities + 'cities</span>'
+    : on ? '<span class="gray">nationwide</span>' : '<span class="gray">' + regionsOf(c).length + ' regions</span>';
+  return '<div class="gi' + (c === cur ? ' on' : '') + '" onclick="g3.country=\'' + c + '\';g3.rid=null;g3.qRegion=\'\';render()">'
+    + '<label class="chk" style="margin:0;flex:1" onclick="event.stopPropagation()">'
+    + '<input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="toggleCountry(\'' + c + '\',this.checked)">'
+    + '<b>' + c + '</b><span class="gray">' + CNAME[c] + '</span></label>'
+    + '<span class="mt">' + meta + '</span></div>';
+}
+function clearGeo() {
+  confirmBox('Clear Target Geo', '<p class="small">This also clears the selected Region / City of every country.</p>', () => {
+    form.target.countries = []; form.target.region = {};
+    closeLayer(); render();
+  });
+}
+function toggleCGroup() { /* 分组已取消，保留空实现避免旧调用报错 */ }
+function selectAllCountries() {
+  const a = form.target.countries;
+  const allOn = COUNTRY_LIST.every(([c]) => a.includes(c));
+  COUNTRY_LIST.forEach(([c]) => {
+    const i = a.indexOf(c);
+    if (allOn) { if (i >= 0) a.splice(i, 1); delete form.target.region[c]; }
+    else if (i < 0) { a.push(c); form.target.region[c] = form.target.region[c] || {}; }
+  });
+  render();
+}
+function clearStates(c) { form.target.region[c] = {}; g3.rid = null; render(); }
+/* 全选 / 反选当前可见城市，配合搜索用 */
+function pickCities(c, rid, all) {
+  const r = regionById(c, rid); if (!r) return;
+  const m = form.target.region[c] = form.target.region[c] || {};
+  if (m[rid] === 'all') return;
+  const vis = r.cities.filter((x) => !g3.qCity || x.name.includes(g3.qCity.toLowerCase()));
+  let arr = Array.isArray(m[rid]) ? m[rid] : [];
+  vis.forEach((x) => {
+    const i = arr.indexOf(x.id);
+    if (all) { if (i < 0) arr.push(x.id); }
+    else if (i >= 0) arr.splice(i, 1);
+  });
+  if (arr.length) m[rid] = arr; else delete m[rid];
+  render();
+}
+function geoStatOf(c) {
+  const m = form.target.region[c] || {};
+  let states = 0, cities = 0;
+  Object.keys(m).forEach((rid) => { if (m[rid] === 'all' || (m[rid] || []).length) { states++; cities += stateCount(c, rid); } });
+  return { states, cities };
+}
+function toggleCountry(c, v) {
+  const a = form.target.countries, i = a.indexOf(c);
+  if (v && i < 0) { a.push(c); if (!form.target.region[c]) form.target.region[c] = {}; }
+  if (!v && i >= 0) { a.splice(i, 1); delete form.target.region[c]; }
+  if (v) g3.country = c;
+  render();
+}
+function toggleCity(c, rid, id, v) {
+  const m = form.target.region[c] = form.target.region[c] || {};
+  if (m[rid] === 'all') return;
+  const a = m[rid] = Array.isArray(m[rid]) ? m[rid] : [];
+  const i = a.indexOf(id);
+  if (v && i < 0) a.push(id);
+  if (!v && i >= 0) a.splice(i, 1);
+  if (!a.length) delete m[rid];
+  render();
+}
+function setAll(c, rid, v) {
+  const m = form.target.region[c] = form.target.region[c] || {};
+  if (v) m[rid] = 'all'; else delete m[rid];
+  render();
+}
+/* ============================================================
+   Tracking Link 引擎：解析 / 组装 / 自动生成 / 校验 / 宏渲染
+   纯函数，便于脚本单独验证
+   ============================================================ */
+/* Math Random 表达式：现网用它在多个域名 / pid 之间随机，规避单点限流。
+   形如 {@(['a','b'][parseInt(Math.random()*2)])@}，既可能出现在 host 也可能出现在参数值里 */
+const RAND_RE = /\{@\(\[[^\]]*\]\[parseInt\(Math\.random\(\)\*\d+\)\]\)@\}/;
+const isRand = (s) => RAND_RE.test(String(s || ''));
+/* Math Random 四个维度：维度名 + 输入提示 + 写入链接的目标位置 */
+const RAND_DIMS = {
+  domain:   { name:'Domain',   ph:'candidate domain, e.g. go.onelink.me/S8mj', target:'host' },
+  agency:   { name:'Agency',   ph:'candidate agency, e.g. Mobvista',        target:'af_prt' },
+  pid:      { name:'Pid',      ph:'candidate pid, e.g. mobvista_int',       target:'pid' },
+  af_adset: { name:'af_adset', ph:'candidate af_adset, e.g. adset_a',       target:'af_adset' },
+};
+function toggleRandDim(k, on) { form.tracking.rand[k].on = on ? 1 : 0; openGenerate(); }
+function addRandVal(k) {
+  const el = $('#rnd_' + k), v = (el && el.value || '').trim();
+  if (!v) return toast('Enter a candidate value first', 'warn');
+  const d = form.tracking.rand[k];
+  if (d.list.includes(v)) return toast('That candidate already exists', 'warn');
+  d.list.push(v); d.on = 1;
+  if (el) el.value = '';
+  openGenerate();
+}
+function delRandVal(k, i) { form.tracking.rand[k].list.splice(i, 1); openGenerate(); }
+function clearRandVals(k) {
+  const d = form.tracking.rand[k];
+  d.list = []; d.on = 0;
+  const el = $('#rnd_' + k); if (el) el.value = '';
+  openGenerate();
+}
+function randPool(s) {
+  const m = String(s || '').match(/\[((?:'[^']*'\s*,?\s*)+)\]/);
+  if (!m) return [];
+  return m[1].split(',').map((x) => x.trim().replace(/^'|'$/g, '')).filter(Boolean);
+}
+function randExpr(arr) {
+  if (!arr || !arr.length) return '';
+  return "{@([" + arr.map((x) => "'" + x + "'").join(',') + "][parseInt(Math.random()*" + arr.length + ")])@}";
+}
+function parseLink(url) {
+  const out = { scheme:'', host:'', path:'', params:[], ok:false };
+  if (!url) return out;
+  /* Math Random 表达式里带 / 和 ? ，会把 URL 切错。先抽出来占位，解析完再还原 */
+  const keep = [];
+  const s = String(url).trim().replace(/\{@\([^@]*?\)@\}/g, (m) => { keep.push(m); return '\u0001' + (keep.length - 1) + '\u0001'; });
+  const back = (x) => String(x == null ? '' : x).replace(/\u0001(\d+)\u0001/g, (_, i) => keep[+i]);
+  const m = s.match(/^(\w+):\/\/([^/?#]+)([^?#]*)(?:\?([\s\S]*))?$/);
+  if (!m) return out;
+  out.ok = true; out.scheme = m[1]; out.host = back(m[2]); out.path = back((m[3] || '').replace(/^\//, ''));
+  (m[4] || '').split('&').filter(Boolean).forEach((kv) => {
+    const i = kv.indexOf('=');
+    out.params.push(i < 0 ? { k: back(kv), v: '' } : { k: back(kv.slice(0, i)), v: back(kv.slice(i + 1)) });
+  });
+  return out;
+}
+function buildLink(p) {
+  const q = p.params.filter((x) => x.k).map((x) => x.k + '=' + x.v).join('&');
+  return p.scheme + '://' + p.host + (p.path ? '/' + p.path : '') + (q ? '?' + q : '');
+}
+function autoGenerate(kind) {
+  const t = form.tracking, a = form.adv, r = MMP_RULES[t.third_party];
+  if (!r || !r.click_host) return toast('当前 Third Party 无标准模板，请手工填写', 'warn');
+  const host = kind === 'view' ? r.view_host : r.click_host;
+  const path = form.target.platform === 'ios' ? ('id' + (a.app_id || '554782625')) : a.package_name;
+  const params = [];
+  r.required.forEach((x) => { if (!x.os || x.os === form.target.platform) params.push({ k:x.k, v:x.v }); });
+  if (kind === 'view') {
+    const i = params.findIndex((x) => x.k === 'af_click_lookback');
+    if (i >= 0) params[i] = { k:'af_viewthrough_lookback', v:'1d' };
+  }
+  if (t.is_agency && r.agency_param) params.push({ k:r.agency_param, v:t.af_prt || '' });
+  const url = buildLink({ scheme:'https', host, path, params });
+  if (kind === 'view') t.adv_impression_link = url; else t.tracking_link = url;
+  toast('已按 ' + MMPS[t.third_party] + ' 标准模板生成' + (kind === 'view' ? ' Impression' : ' Tracking') + ' Link');
+  render();
+}
+
+/* ============================================================
+   手绘稿：Adv Link → Generate → Tracking Link
+   调研反馈：拿到上游链接后还要跑一趟 support 页面生成，再贴回 offer，容易出错。
+   这里把生成动作收进建单页，同时支持域名 / pid 的 Math Random。
+   ============================================================ */
+function openGenerate() {
+  const t = form.tracking, R = t.rand;
+  const dim = (k) => {
+    const d = R[k], m = RAND_DIMS[k];
+    return '<div class="fi"><label><label class="chk" style="margin:0">'
+      + '<input type="checkbox" ' + (d.on ? 'checked' : '') + ' onchange="toggleRandDim(\'' + k + '\',this.checked)">'
+      + m.name + '</label></label><div class="c wide">'
+      + '<div class="row"><input type="text" id="rnd_' + k + '" class="mono" placeholder="' + esc(m.ph) + '" style="flex:1">'
+      + '<button class="btn sm" onclick="addRandVal(\'' + k + '\')">Add</button>'
+      + (d.list.length ? '<button class="btn sm" onclick="clearRandVals(\'' + k + '\')">Clear All</button>' : '')
+      + '</div>'
+      + (d.list.length ? '<div class="row" style="margin-top:6px">'
+          + d.list.map((v, i) => '<span class="tag">' + esc(v)
+              + ' <a onclick="delRandVal(\'' + k + '\',' + i + ')">×</a></span>').join('')
+          + '</div>' : '')
+      + '</div></div>';
+  };
+  const onDims = Object.keys(RAND_DIMS).filter((k) => R[k].on && R[k].list.length);
+  $('#layer').innerHTML = '<div class="mask" onclick="if(event.target===this)closeLayer()"><div class="dlg w960">'
+    + '<div class="h">Tracking Link generated from Adv Link<a onclick="closeLayer()">×</a></div><div class="b">'
+    + '<div class="fi"><label><span class="rq">*</span>Adv Link</label><div class="c wide">'
+    + '<textarea rows="3" class="mono" oninput="setv(\'tracking.adv_link\',this.value)">' + esc(t.adv_link) + '</textarea>'
+    + '</div></div>'
+    /* 生成配置：只保留生成链接必须的两个枚举，用下拉单选 */
+    + '<div class="sec"><div class="sh">Generation Settings</div><div class="sb"><div class="g2">'
+    + '<div class="fi">' + L('Third Party', 1) + '<div class="c">'
+    + sel('tracking.third_party', t.third_party, MMPS) + '</div></div>'
+    + '<div class="fi">' + L('Track Link Type', 1) + '<div class="c">'
+    + sel('tracking.track_link_type', t.track_link_type, TRACK_LINK_TYPES) + '</div></div>'
+    + '</div>'
+    /* Math Random 子模块：四个维度各自维护候选值 */
+    + '<div class="sec"><div class="sh">Math Random</div><div class="sb">'
+    + Object.keys(RAND_DIMS).map(dim).join('')
+    + (onDims.length ? '<div class="pv" style="margin-top:8px">'
+        + esc(onDims.map((k) => (RAND_DIMS[k].target + '').padEnd(8, ' ') + '= ' + randExpr(R[k].list)).join('\n')) + '</div>' : '')
+    + '</div></div>'
+    + '</div></div>'
+    + '</div><div class="f"><button class="btn" onclick="closeLayer()">Cancel</button>'
+    + '<button class="btn pri" onclick="runGenerate()">Generate &amp; Apply</button></div></div></div>';
+}
+function runGenerate() {
+  const t = form.tracking, a = form.adv, r = MMP_RULES[t.third_party] || {};
+  const p = parseLink(t.adv_link);
+  if (!p.ok) return toast('Adv Link cannot be parsed; check for a missing https://', 'err');
+  const R = t.rand;
+  if (R.domain.on && R.domain.list.length) p.host = randExpr(R.domain.list);
+  if (!p.path && r.path_rule === 'bundle') p.path = form.target.platform === 'ios' ? ('id' + (a.app_id || '')) : a.package_name;
+  const has = {};
+  p.params.forEach((x, i) => { has[x.k] = i; });
+  /* 补齐当前 MMP 的必填参数，已有的不动 */
+  (r.required || []).forEach((x) => {
+    if (x.os && x.os !== form.target.platform) return;
+    if (has[x.k] == null) { p.params.push({ k:x.k, v:x.v }); has[x.k] = p.params.length - 1; }
+  });
+  /* pid / agency / af_adset 三个维度写到对应参数上 */
+  ['pid', 'agency', 'af_adset'].forEach((k) => {
+    if (!R[k].on || !R[k].list.length) return;
+    const key = RAND_DIMS[k].target, ex = randExpr(R[k].list);
+    if (has[key] != null) p.params[has[key]].v = ex;
+    else { p.params.push({ k:key, v:ex }); has[key] = p.params.length - 1; }
+  });
+  /* 拉活单补 is_retargeting，避免报表口径与实际跑法不一致 */
+  if (form.basic.is_reactivation === 'rt' && has.is_retargeting == null) p.params.push({ k:'is_retargeting', v:'true' });
+  t.tracking_link = buildLink(p);
+  const onDims = Object.keys(RAND_DIMS).filter((k) => R[k].on && R[k].list.length);
+  pushLog('Tracking Info', 'Tracking Link generated from Adv Link'
+    + (onDims.length ? '（Math Random：' + onDims.map((k) => RAND_DIMS[k].name + ' ' + R[k].list.length + ' of').join('、') + '）' : ''));
+  closeLayer(); render();
+  toast('Tracking Link generated and applied; validation runs below');
+}
+/* Async Flow on时自动填 Store Link，省掉手工复制商店链接这一步 */
+function toggleAsync(v) {
+  const t = form.tracking;
+  t.async_flow = v ? 1 : 0;
+  if (v && !t.store_link) {
+    t.store_link = form.adv.preview_link || form.adv.store_url || '';
+    if (t.store_link) toast('Store Link auto-filled from the Package Info store link');
+    else toast('No store link in Package Info yet; fill Store Link manually', 'warn');
+  }
+  pushLog('Tracking Info', 'Async Flow → ' + (v ? 'on' : 'off'));
+  render();
+}
+function validateLink(url, kind) {
+  const t = form.tracking, a = form.adv, r = MMP_RULES[t.third_party] || {}, out = [];
+  const push = (level, msg, fix) => out.push({ level, msg, fix: fix || null });
+  if (!url) { if (kind === 'click') push('err', LINK_ERR.empty, 'auto'); return out; }
+  const p = parseLink(url);
+  if (!p.ok) { push('err', 'Link cannot be parsed; check for a missing https:// or extra spaces'); return out; }
+  if (p.scheme !== 'https') push('err', LINK_ERR.scheme(p.scheme));
+  const wantHost = kind === 'view' ? r.view_host : r.click_host;
+  if (isRand(p.host)) push('warn', 'Host uses Math Random (' + randPool(p.host).length + ' candidates); host check skipped. '
+    + 'Make sure every candidate domain is registered with the MMP, otherwise those clicks are dropped');
+  else if (wantHost && p.host !== wantHost) push('err', LINK_ERR.host(p.host, wantHost, MMPS[t.third_party]));
+  if (r.path_rule === 'bundle') {
+    const want = form.target.platform === 'ios' ? ('id' + (a.app_id || '')) : a.package_name;
+    if (!p.path) push('err', LINK_ERR.path_empty);
+    else if (form.target.platform === 'android' && p.path !== a.package_name) push('err', LINK_ERR.path_bundle(p.path, want));
+  }
+  const bad = [];
+  p.params.forEach((x) => {
+    if (isRand(x.v)) return;   /* Math Random 表达式合法，不按宏校验 */
+    (String(x.v).match(/\{@[^}]*@\}/g) || []).forEach((m) => {
+      if (!MACRO_SET.has(m) && bad.indexOf(m) < 0) bad.push(m);
+    });
+  });
+  bad.forEach((m) => push('err', LINK_ERR.macro(m), 'macro'));
+  p.params.forEach((x) => {
+    if (isRand(x.v)) push('warn', 'param ' + x.k + ' uses Math Random (' + randPool(x.v).length + ' candidates), '
+      + 'candidates must match what is registered with the MMP, otherwise attribution is dropped');
+  });
+  const has = new Set(p.params.map((x) => x.k));
+  const missing = (r.required || []).filter((x) => (!x.os || x.os === form.target.platform) && !has.has(x.k)).map((x) => x.k);
+  if (missing.length) push('err', LINK_ERR.missing(missing), 'fill');
+  const emptyVals = p.params.filter((x) => x.k && !x.v).map((x) => x.k);
+  if (emptyVals.length) push('warn', LINK_ERR.empty_val(emptyVals));
+  p.params.forEach((x) => {
+    const def = (r.required || []).concat(r.optional || []).find((y) => y.k === x.k);
+    if (def && def.os && def.os !== form.target.platform) push('warn', LINK_ERR.os_mismatch(x.k, def.os));
+  });
+  if (t.is_agency && r.agency_param && !has.has(r.agency_param))
+    push('warn', 'Agency clients must carry ' + r.agency_param + ', and the value must be whitelisted on the MMP side');
+  if (t.track_way === 's2s' && !has.has('af_ua') && t.third_party === 'appsflyer')
+    push('warn', 'With Track Way = S2S, af_ua / af_ip are recommended; otherwise device info is incomplete');
+  return out;
+}
+function fillMissing(kind) {
+  const t = form.tracking, r = MMP_RULES[t.third_party] || {};
+  const url = kind === 'view' ? t.adv_impression_link : t.tracking_link;
+  const p = parseLink(url);
+  if (!p.ok) return toast('Link cannot be parsed; fix the basic format first', 'err');
+  const has = new Set(p.params.map((x) => x.k));
+  let n = 0;
+  (r.required || []).forEach((x) => {
+    if (x.os && x.os !== form.target.platform) return;
+    if (!has.has(x.k)) { p.params.push({ k:x.k, v:x.v }); n++; }
+  });
+  const nu = buildLink(p);
+  if (kind === 'view') t.adv_impression_link = nu; else t.tracking_link = nu;
+  toast(n ? 'Filled ' + n + ' required parameters' : 'No required parameters are missing');
+  render();
+}
+function renderMacros(url, ctx) {
+  ctx = ctx || {};
+  let s = String(url || '');
+  MACROS.forEach((x) => {
+    let v = x.s;
+    if (x.m === '{@info.country@}' && ctx.geo) v = ctx.geo;
+    if (x.m === '{@info.city@}' && ctx.city) v = ctx.city;
+    s = s.split(x.m).join(v);
+  });
+  return s.split('{name}').join(ctx.name || 'OFFER_NAME');
+}
+function classifyParam(k) {
+  const r = MMP_RULES[form.tracking.third_party] || {};
+  if ((r.required || []).some((x) => x.k === k)) return 'required';
+  if ((r.optional || []).some((x) => x.k === k)) return 'optional';
+  return 'custom';
+}
+function setUrl(kind, v) {
+  if (kind === 'view') form.tracking.adv_impression_link = v; else form.tracking.tracking_link = v;
+  render();
+}
+function setParam(kind, i, f, v) {
+  const url = kind === 'view' ? form.tracking.adv_impression_link : form.tracking.tracking_link;
+  const p = parseLink(url); if (!p.params[i]) return;
+  p.params[i][f] = v; setUrl(kind, buildLink(p));
+}
+function delParam(kind, i) {
+  const url = kind === 'view' ? form.tracking.adv_impression_link : form.tracking.tracking_link;
+  const p = parseLink(url); p.params.splice(i, 1); setUrl(kind, buildLink(p));
+}
+function addParam(kind) {
+  const url = kind === 'view' ? form.tracking.adv_impression_link : form.tracking.tracking_link;
+  const p = parseLink(url);
+  if (!p.ok) return toast('Enter a parsable link first', 'warn');
+  p.params.push({ k:'custom_key', v:'' }); setUrl(kind, buildLink(p));
+}
+
+/* ============================================================
+   单条 Offer 汇总：把各模块的值收成一条记录，供预览、底部校验与创建使用
+   ============================================================ */
+function buildOffer() {
+  const b = form.basic, t = form.target, c = form.cap;
+  const region = buildRegionJSON(), city = buildCityJSON();
+  let states = 0, cities = 0;
+  t.countries.forEach((k) => orderedRids(k).forEach((rid) => { states++; cities += stateCount(k, rid); }));
+  const url = form.tracking.tracking_link, lk = form.tracking.link_type;
+  const ar = advRealPrice(), cp = chnPrice();
+  const advCap = capVal(c.adv_conv_cap), chnCap = capVal(c.chn_conv_cap);
+  const issues = validateLink(url, 'click');
+  if (!(cp > 0)) issues.push({ level:'err', msg:'Channel payout is empty or not greater than 0' });
+  if (ar > 0 && cp > 0 && cp >= ar) issues.push({ level:'err', msg:'Channel payout is not lower than the Adv price; margin is negative' });
+  if (uuidDup(b.offer_uuid)) issues.push({ level:'err', msg:'Offer UUID ' + b.offer_uuid + ' already exists' });
+  if (nameDup(b.offer_name)) issues.push({ level:'err', msg:'Offer Name ' + b.offer_name + ' already exists' });
+  if (chnCap != null && advCap != null && +chnCap > +advCap)
+    issues.push({ level:'warn', msg:'Channel Cap is higher than Adv Cap; the excess cannot be billed to the advertiser' });
+  settleMix().forEach((m) => issues.push({ level:'warn', msg:m }));
+  if (t.countries.length > 1) issues.push({ level:'warn', msg:'Package pass-through needs a single Target Geo, so it is unavailable for multi-geo offers' });
+  if (lk === 'deeplink' && b.is_reactivation !== 'rt')
+    issues.push({ level:'warn', msg:'Link Type = Deeplink is usually used with retargeting, but Retargeting is set to UA' });
+  return { name:b.offer_name, uuid:b.offer_uuid, countries:t.countries.slice(), link_type:lk,
+    advPrice:ar, price:cp, advCap:advCap, cap:chnCap,
+    url:url, region:region, city:city, states:states, cities:cities, issues:issues };
+}
+const errCount = (o) => o.issues.filter((i) => i.level === 'err').length;
+
+/* 各模块必填校验，驱动右侧导航的状态标签 */
+function secErrors(k) {
+  const e = [];
+  if (k === 'adv') {
+    if (!form.adv.advertiser) e.push('Advertiser is required');
+    if (!form.adv.package_name) e.push('Package Name is required');
+  }
+  if (k === 'basic') {
+    if (!form.basic.offer_name) e.push('Offer Name is required');
+    if (!form.basic.offer_uuid) e.push('Offer UUID is required');
+    if (nameDup(form.basic.offer_name)) e.push('Offer Name already exists');
+    if (uuidDup(form.basic.offer_uuid)) e.push('Offer UUID already exists');
+    if (!form.basic.pm) e.push('PM is required');
+  }
+  if (k === 'settle') {
+    const ar = advRealPrice(), cp = chnPrice();
+    if (!(ar > 0)) e.push('Adv Real Price is required (the price of the settling row in the Adv table)');
+    if (!(cp > 0)) e.push('Channel Payout is required');
+    if (ar > 0 && cp > 0 && cp >= ar) e.push('Channel Payout is not lower than Adv Real Price; margin is negative');
+    form.settle.adv_events.forEach((x) => { if (!x.name) e.push('Event Name in the Set Info table cannot be empty'); });
+    if (!form.settle.adv_events.length) e.push('Set Info needs at least one event');
+    if (form.settle.adv_settle_type !== 'cpi' && !form.settle.adv_events.some((x) => x.name !== 'install'))
+      e.push('Adv Set Type = ' + SETTLE_TYPES[form.settle.adv_settle_type] + ' requires an event other than install in the Set Info table');
+    if (form.settle.chn_settle_type === 'cpe' && !form.settle.chn_events.some((x) => x.name !== 'install'))
+      e.push('Channel Set Type = CPE requires an event other than install in the Set Info table');
+  }
+  if (k === 'cap') {
+    if (!form.cap.chn_conv_cap.on && !(form.cap.chn_conv_cap.val > 0)) e.push('Channel Conversion Cap value required when OPEN is off');
+    if (!form.cap.chn_click_cap.on && !(form.cap.chn_click_cap.val > 0)) e.push('Channel Click Cap value required when OPEN is off');
+  }
+  if (k === 'target') geoIssues().filter((x) => x.level === 'err').forEach((x) => e.push(x.msg));
+  if (k === 'creative') {
+    if (!form.creative.pictures.length && !form.creative.videos.length) e.push('Upload at least one picture or video');
+  }
+  if (k === 'tracking') {
+    validateLink(form.tracking.tracking_link, 'click').filter((x) => x.level === 'err').forEach((x) => e.push(x.msg));
+    if (form.tracking.async_flow && !form.tracking.store_link) e.push('Store Link is required when Async Flow is on');
+  }
+  return e;
+}
+function secWarns(k) {
+  if (k === 'settle') return settleMix();
+  if (k === 'target') return geoIssues().filter((x) => x.level === 'warn').map((x) => x.msg);
+  if (k === 'tracking') return validateLink(form.tracking.tracking_link, 'click').filter((x) => x.level === 'warn').map((x) => x.msg);
+  return [];
+}
+
+/* ============================================================
+   模块渲染。每个模块一个 cardXxx()，标题右侧挂 PRD 里的整合说明
+   ============================================================ */
+let openPkg = false;       /* Package Info 折叠态，PRD 要求默认收起 */
+let openImp = false;       /* Adv Impression Tracking Link 折叠态：选填，默认收起 */
+function cardHead(k, name, note, right) {
+  const s = SECS.find((x) => x.k === k) || {};
+  return '<div class="card' + (s.nw ? ' new' : '') + '" id="' + k + '"><div class="h">' + esc(name)
+    + (note ? ii(note) : '')
+    + '<div class="r">' + (right || '') + '</div></div><div class="b">';
+}
+const L = (t, rq) => '<label>' + (rq ? '<span class="rq">*</span>' : '') + t + '</label>';
+
+/* ---------- 1. Adv & Package & Campaign Info ---------- */
+function cardAdv() {
+  const a = form.adv;
+  let h = cardHead('adv', 'Adv & Package & Campaign Info', 'Campaign + Package info merged; only four primary fields are shown by default');
+  /* 左列：Advertiser → Package Name（包跟着广告主）；右列：Related Campaign → Related Invoice（单据跟着 campaign） */
+  h += '<div class="g2">'
+    + '<div class="fi">' + L('Advertiser', 1) + '<div class="c">' + inp('adv.advertiser', a.advertiser) + '</div></div>'
+    + '<div class="fi">' + L('Related Campaign') + '<div class="c">' + inp('adv.related_campaign', a.related_campaign) + '</div></div>'
+    + '<div class="fi">' + L('Package Name', 1) + '<div class="c">' + inp('adv.package_name', a.package_name, { cls:'mono' }) + '</div></div>'
+    + '<div class="fi">' + L('Related Invoice') + '<div class="c">' + inp('adv.related_invoice', a.related_invoice) + '</div></div>'
+    + '</div>'
+    /* 展开入口放在这块信息最下方，点开后详情直接接在下面，不再单独包一个 Package Info 模块 */
+    + '<div class="row" style="margin-top:6px;padding-top:10px;border-top:1px dashed #ebeef5">'
+    + '<button class="btn sm" onclick="openPkg=!openPkg;render()">'
+    + (openPkg ? 'Hide Package Details ▴' : 'Show Package Details ▾') + '</button>'
+    + '</div>';
+  if (openPkg) {
+    h += '<div style="margin-top:12px">'
+      + '<div class="fi">' + L('Preview Link') + '<div class="c wide"><div class="row">'
+      + '<span style="flex:1">' + inp('adv.preview_link', a.preview_link) + '</span>'
+      + '<button class="btn sm" onclick="toast(\'Prototype only: open the store page in a new tab\')">Preview</button>'
+      + '<button class="btn sm" onclick="fetchStore()">Load</button>'
+      + ii('Paste an App Store / Google Play link and press Load to pull the package, app name and icon') + '</div></div></div>'
+      + '<div class="g2">'
+      + '<div class="fi">' + L('App Name') + '<div class="c">' + inp('adv.app_name', a.app_name) + '</div></div>'
+      + '<div class="fi">' + L('App Short Name') + '<div class="c">' + inp('adv.app_short', a.app_short) + '</div></div>'
+      + '<div class="fi">' + L('Advertiser Short Name') + '<div class="c">' + inp('adv.adv_short', a.adv_short)
+      + ii('Short names are used by the offer naming template') + '</div></div>'
+      + '<div class="fi">' + L('App Store ID') + '<div class="c">' + inp('adv.app_id', a.app_id, { cls:'mono', ph:'required for iOS, e.g. 554782625' }) + '</div></div>'
+      + '<div class="fi">' + L('Product Category') + '<div class="c">' + chk('adv.category', a.category, CATEGORIES) + '</div></div>'
+      + '<div class="fi">' + L('App Size (MB)') + '<div class="c">' + inp('adv.app_size', a.app_size) + '</div></div>'
+      + '<div class="fi">' + L('Min OS') + '<div class="c">' + inp('adv.min_os', a.min_os) + '</div></div>'
+      + '<div class="fi">' + L('App Rate') + '<div class="c">' + inp('adv.app_rate', a.app_rate) + '</div></div>'
+      + '<div class="fi">' + L('Kids Centric') + '<div class="c">' + chkBool('adv.kids_centric', a.kids_centric) + '</div></div>'
+      + '<div class="fi">' + L('Campaign Icon') + '<div class="c">'
+      + (a.icon_url ? '<span class="tag gray mono">' + esc(a.icon_url) + '</span>' : '<span class="small gray">not uploaded</span>')
+      + ii('This icon can be loaded as a creative in Creative Info') + '</div></div>'
+      + '</div>'
+      + '<div class="fi">' + L('App Description') + '<div class="c">'
+      + '<textarea rows="2" oninput="setv(\'adv.app_desc\',this.value)">' + esc(a.app_desc) + '</textarea></div></div>'
+      + '<div class="fi">' + L('Deprecated Fields') + '<div class="c wide"><div class="row">'
+      + ['gid/IDFA needs','IMEI needs','MAC needs','Server side click','Click-base attribution','View-base attribution',
+         'VTA Connecting','Bind List','Server Side Click File','Recommended','Advertiser Match Way','Offer Budget',
+         'Discount(%)','Traffic Network','Excluded Traffic','Advanced Targeting']
+        .map((x) => '<span class="tag gray">' + x + '</span>').join('')
+      + '</div></div></div>'
+      + '</div>';
+  }
+  return h + '</div></div>';
+}
+function fetchStore() {
+  const u = form.adv.preview_link || form.adv.store_url || '';
+  const m = u.match(/[?&]id=([\w.]+)/) || u.match(/\/id(\d+)/);
+  if (!m) return toast('This does not look like a store link; fill the package name and app name manually', 'warn');
+  if (/play\.google/.test(u)) { form.target.platform = 'android'; form.adv.package_name = m[1]; }
+  else { form.target.platform = 'ios'; form.adv.app_id = m[1]; }
+  form.adv.icon_url = 'campaign_icon_512.png';
+  toast('App info and icon fetched (prototype only; the real build calls the store API)'); render();
+}
+
+/* ---------- 2. Basic Info ---------- */
+function cardBasic() {
+  const b = form.basic, a = form.adv;
+  const nDup = nameDup(b.offer_name), uDup = uuidDup(b.offer_uuid);
+  const expect = nameToUuid(b.offer_name);
+  const drift = b.offer_name && b.offer_uuid && expect !== b.offer_uuid;
+  let h = cardHead('basic', 'Basic Info', 'Basic info + operation info merged; PM / BD inherit from the advertiser',
+    '<span class="tag gray mono">Offer ID ' + (b.offer_id ? esc(b.offer_id) : 'generated after creation') + '</span>');
+
+  /* Offer Name 与 Offer UUID 各自一个字段，两列并排 */
+  h += '<div class="g2">'
+    + '<div class="fi">' + L('Offer Name', 1) + '<div class="c">'
+    + inp('basic.offer_name', b.offer_name, { ph:'e.g. DOMINO STAR - AND - 13' })
+    + ii('Globally unique, usually uppercase; differs from Offer UUID only in case and separators')
+    + (nDup ? '<div class="tip err">Offer Name already exists'
+        + (nextFree(b.offer_name, EXIST_NAMES) ? ' <a onclick="useNext(\'name\')">use ' + esc(nextFree(b.offer_name, EXIST_NAMES)) + '</a>' : '') + '</div>' : '')
+    + '</div></div>'
+    + '<div class="fi">' + L('Offer UUID', 1) + '<div class="c">'
+    + inp('basic.offer_uuid', b.offer_uuid, { cls:'mono', ph:'lowercase + underscore, e.g. domino_star_and_13' })
+    + ii('Globally unique identifier used to look up the offer')
+    + (uDup ? '<div class="tip err">Offer UUID already exists'
+        + (nextFree(b.offer_uuid, EXIST_UUIDS) ? ' <a onclick="useNext(\'uuid\')">use ' + esc(nextFree(b.offer_uuid, EXIST_UUIDS)) + '</a>' : '') + '</div>'
+      : drift ? '<div class="tip warn">Differs from the value mapped from Offer Name (' + esc(expect) + '); confirm this is intended</div>' : '')
+    + '</div></div>'
+    + '</div>'
+
+    /* 口径类字段一行两个：是否拉活的字段名与上一行的 Offer UUID 同一起点 */
+    + '<div class="g2">'
+    + '<div class="fi">' + L('Offer Type') + '<div class="c">' + chk('basic.offer_type', b.offer_type, OFFER_TYPES)
+    + ii('Only the type in use (direct) is shown; legacy types stay hidden') + '</div></div>'
+    + '<div class="fi">' + L('Retargeting') + '<div class="c">' + chk('basic.is_reactivation', b.is_reactivation, REACT_TYPES)
+    + ii('Reporting dimension only; RT offers on AF links need is_retargeting=true') + '</div></div>'
+    + '</div>'
+
+    /* 投放期单独一行：两个日期 + now 开关放一起才不会被挤换行 */
+    /* now 直接做成第一个日期选择框旁边的按钮，不再单独占一个字段 */
+    + '<div class="fi">' + L('Promote Periods') + '<div class="c wide"><div class="row">'
+    + '<button class="btn sm' + (b.promote_now ? ' pri' : '') + '" onclick="setv(\'basic.promote_now\',' + (b.promote_now ? 0 : 1) + ');render()">now</button>'
+    + (b.promote_now ? '<span class="tag gray">starts right after creation</span>'
+      : '<span style="width:170px">' + inp('basic.promote_start', b.promote_start, { type:'date' }) + '</span><span class="gray">→</span>'
+        + '<span style="width:170px">' + inp('basic.promote_end', b.promote_end, { type:'date' }) + '</span>')
+    + '</div></div></div>'
+
+    /* 归属人两列对齐 */
+    + '<div class="g2">'
+    + '<div class="fi">' + L('PM', 1) + '<div class="c"><div class="row"><span style="flex:1">' + inp('basic.pm', b.pm) + '</span>'
+    + '</div></div></div>'
+    + '<div class="fi">' + L('BD') + '<div class="c"><div class="row"><span style="flex:1">' + inp('basic.bd', b.bd) + '</span>'
+    + '</div></div></div>'
+    + '</div>'
+    + (b.is_reactivation === 'rt' && !/is_retargeting=true/.test(form.tracking.tracking_link)
+      ? '<div class="tip warn">Retargeting = RT but the Tracking Link has no is_retargeting=true, so reporting will not match the actual run</div>' : '')
+    + '<div class="fi">' + L('Channel White List') + '<div class="c">'
+    + '<textarea rows="3" class="mono" placeholder="one channel uuid per line" oninput="setv(\'basic.channel_white_list\',this.value)">' + esc(b.channel_white_list) + '</textarea>'
+    + '<div class="tip">' + rows(b.channel_white_list).length + ' channels</div></div></div>';
+  return h + '</div></div>';
+}
+
+/* ---------- 3. Settlement Info ---------- */
+/* Adv Set Type = 广告主与我方结算的口径；Channel Set Type = 我方与下游渠道结算的口径。
+   两者共用同一张 event 清单：Adv 侧维护 event 与价格，Channel 侧只按同一批 event 填 payout 与对外 note。
+   结算行（参与算钱的那一行）由各自的口径决定，非结算行的价格 / payout 置灰只读。 */
+function cardSettle() {
+  const s = form.settle;
+  syncChnEvents();
+  const ai = advPayIdx();
+  let h = cardHead('settle', 'Settlement Info',
+    'Adv Set Type drives the upstream settlement basis, Channel Set Type the downstream one; both tables share one event list');
+
+  /* 上游口径 + Adv 侧价格表 */
+  h += '<div class="fi">' + L('Adv Set Type') + '<div class="c">' + chk('settle.adv_settle_type', s.adv_settle_type, SETTLE_TYPES) + '</div></div>'
+    + '<table class="t" style="margin-top:6px"><thead><tr><th style="width:210px">Event Name</th>'
+    + '<th class="ct" style="width:130px">Adv Real Price</th><th class="ct" style="width:130px">Adv Price</th>'
+    + '<th class="ct" style="width:150px">Match Type</th><th class="ct" style="width:150px">Attri Windows</th>'
+    + '<th class="ct" style="width:60px">Delete</th></tr></thead><tbody>'
+    + (s.adv_events.length ? s.adv_events.map((e, i) => {
+        const pay = i === ai;   /* 参与上游结算的行 */
+        return '<tr' + (pay ? ' style="background:#f4f9ff"' : '') + '>'
+        + '<td><input type="text" class="mono" value="' + esc(e.name) + '" oninput="renameEvent(' + i + ',this.value)"></td>'
+        + '<td><input type="number" step="0.01" ' + (pay ? '' : 'disabled ') + 'value="' + (e.real == null ? '' : e.real) + '" oninput="form.settle.adv_events[' + i + '].real=this.value===\'\'?null:+this.value;render()"></td>'
+        + '<td><input type="number" step="0.01" ' + (pay ? '' : 'disabled ') + 'value="' + (e.price == null ? '' : e.price) + '" oninput="form.settle.adv_events[' + i + '].price=this.value===\'\'?null:+this.value;render()"></td>'
+        + '<td><select onchange="form.settle.adv_events[' + i + '].match=this.value;render()">'
+        + Object.keys(MATCH_TYPES).map((k) => '<option value="' + k + '" ' + (e.match === k ? 'selected' : '') + '>' + MATCH_TYPES[k] + '</option>').join('') + '</select></td>'
+        + '<td><select onchange="form.settle.adv_events[' + i + '].window=this.value;render()">'
+        + Object.keys(ATTR_WINDOWS).map((k) => '<option value="' + k + '" ' + (e.window === k ? 'selected' : '') + '>' + ATTR_WINDOWS[k] + '</option>').join('') + '</select></td>'
+        + '<td class="ct"><a title="Delete this event" onclick="delSetRow(' + i + ')">🗑</a></td></tr>';
+      }).join('')
+      : '<tr><td colspan="6" class="gray small">No event</td></tr>')
+    + '</tbody></table>'
+    + '<div class="row" style="margin-top:8px"><button class="btn sm" onclick="addSetRow()">+ Add Event</button></div>';
+
+  /* 下游口径 + Channel 侧 payout 表（行由上表驱动，不可增删） */
+  h += '<div class="fi" style="margin-top:14px">' + L('Channel Set Type') + '<div class="c">' + chk('settle.chn_settle_type', s.chn_settle_type, CHN_SETTLE_TYPES) + '</div></div>'
+    + '<table class="t" style="margin-top:6px"><thead><tr><th style="width:210px">Event Name</th>'
+    + '<th class="ct" style="width:150px">Channel Payout</th><th>Note (External)</th></tr></thead><tbody>'
+    + s.chn_events.map((e, i) => '<tr style="background:#f4f9ff">'
+        + '<td class="mono small">' + esc(e.name) + '</td>'
+        + '<td><input type="number" step="0.01" value="' + (e.payout == null ? '' : e.payout) + '" oninput="form.settle.chn_events[' + i + '].payout=this.value===\'\'?null:+this.value;render()"></td>'
+        + '<td><div class="rt" contenteditable="true" oninput="form.settle.chn_events[' + i + '].note=this.innerHTML">' + (e.note || '') + '</div></td></tr>').join('')
+    + '</tbody></table>';
+  return h + '</div></div>';
+}
+/* event 改名：两张表同步，Channel 侧的 event 名不单独维护 */
+function renameEvent(i, v) {
+  form.settle.adv_events[i].name = v;
+  if (form.settle.chn_events[i]) form.settle.chn_events[i].name = v;
+  render();
+}
+function addSetRow() {
+  form.settle.adv_events.push({ name:'af_new_event', real:null, price:null, match:'uniq', window:'7d' });
+  pushLog('Settlement Info', 'Set Info: event added');
+  render();
+}
+function delSetRow(i) {
+  const e = form.settle.adv_events[i];
+  form.settle.adv_events.splice(i, 1);
+  form.settle.chn_events.splice(i, 1);
+  pushLog('Settlement Info', 'Set Info: event deleted — ' + (e && e.name || ''));
+  render();
+}
+
+/* ---------- 4. Cap Info ---------- */
+function cardCap() {
+  const c = form.cap, st = form.settle;
+  let h = cardHead('cap', 'Cap Info',
+    'Each cap has its own OPEN switch; Conversion follows the event name configured on the settlement side');
+  /* OPEN 打开即锁定数值：开着不可编辑，要改先关掉开关 */
+  const row = (path, o, name, conv, tag) =>
+    '<tr class="' + (o.on ? '' : 'gray') + '"><td>' + name + (tag || '') + '</td>'
+    + '<td class="ct">' + (conv ? '<span class="tag">' + esc(conv) + '</span>' : '<span class="gray">—</span>') + '</td>'
+    + '<td class="ct"><input type="number" ' + (o.on ? 'disabled ' : '') + 'value="' + (o.val == null ? '' : o.val) + '"'
+    + ' oninput="setv(\'' + path + '.val\',this.value===\'\'?null:+this.value);render()"></td>'
+    + '<td class="ct"><label class="chk" style="margin:0;justify-content:center">'
+    + '<span class="sw' + (o.on ? ' on' : '') + '" onclick="capToggle(\'' + path + '\',' + (o.on ? 0 : 1) + ')"></span>OPEN</label></td></tr>';
+  /* Adv Conversion Cap 只在「Upstream settles on install 结算、下游不按 install 结算」时才有意义 */
+  const showAdvCap = st.adv_settle_type === 'cpi' && st.chn_settle_type !== 'cpi';
+  h += '<div class="capw">'
+    + '<div class="fi">' + L('Budget Type') + '<div class="c"><span class="tag gray">Daily Control</span></div></div>'
+    + '<table class="t"><thead><tr><th style="width:210px">Cap Item</th><th class="ct" style="width:150px">Conversion</th>'
+    + '<th class="ct" style="width:130px">Value</th><th class="ct" style="width:90px">Switch</th></tr></thead><tbody>'
+    + (showAdvCap ? row('cap.adv_conv_cap', c.adv_conv_cap, 'Adv Conversion Cap', advConvName(), '') : '')
+    + row('cap.chn_conv_cap', c.chn_conv_cap, 'Channel Conversion Cap', chnConvName(), '')
+    + row('cap.chn_click_cap', c.chn_click_cap, 'Channel Click Cap', 'clicks', '')
+    + '</tbody></table>'
+    + (showAdvCap && capVal(c.chn_conv_cap) != null && capVal(c.adv_conv_cap) != null && capVal(c.chn_conv_cap) > capVal(c.adv_conv_cap)
+      ? '<div class="tip warn">Channel Cap is higher than Adv Cap; the excess cannot be billed to the advertiser</div>' : '')
+    + (capVal(c.chn_conv_cap) == null ? '<div class="tip warn">Channel Conversion Cap is set to no limit, so the offer will not auto-pause on volume</div>' : '')
+    + '</div>';
+  return h + '</div></div>';
+}
+
+/* ---------- 5. Target Info（含三级 Geo） ---------- */
+function cardTarget() {
+  const t = form.target, tot = geoTotals(), iss = geoIssues();
+  let h = cardHead('target', 'Target Info', 'Version / device / geo targeting fields merged into one module',
+    '<span class="sum"><span>Countries <b>' + tot.countries + '</b></span><span>Regions <b>' + tot.states + '</b></span><span>Cities <b>' + tot.cities + '</b></span></span>');
+
+  /* 全部按字段平铺，不再分「设备与版本定向 / 常用 Geo / Target Geo」几个小标题 */
+  h += '<div class="g2">'
+    + '<div class="fi">' + L('Platform') + '<div class="c">' + chk('target.platform', t.platform, PLATFORMS) + '</div></div>'
+    + '<div class="fi">' + L('Target Device') + '<div class="c">' + chk('target.device', t.device, DEVICE_MODES) + '</div></div>'
+    + '<div class="fi">' + L('Version Demand') + '<div class="c"><div class="row">'
+    + '<span style="flex:1">' + inp('target.version_from', t.version_from, { ph:'Min version' }) + '</span><span class="gray">~</span>'
+    + '<span style="flex:1">' + inp('target.version_to', t.version_to, { ph:'Max version' }) + '</span>'
+    + '</div></div></div>'
+    + '</div>'
+    /* 快捷勾选：作为一个字段名放在国家标签前面 */
+    + '<div class="fi">' + L('Quick Select') + '<div class="c wide"><div class="row">'
+    + TOP_GEOS.map((c) => '<span class="tag sel' + (t.countries.includes(c) ? ' pick' : '') + '"'
+        + ' onclick="toggleCountry(\'' + c + '\',' + (t.countries.includes(c) ? 'false' : 'true') + ')">'
+        + c + '</span>').join('')
+    + '</div></div></div>'
+    + '<div style="margin-top:6px">' + geoSelector()
+    + (iss.length ? '<div style="margin-top:8px">' + iss.map((x) => '<div class="tip ' + (x.level === 'err' ? 'err' : 'warn') + '">' + esc(x.msg) + '</div>').join('') + '</div>' : '')
+    + '</div>';
+  return h + '</div></div>';
+}
+/* 明确告诉用户这次加载了多少字典、省了多少，把「为什么变快」讲清楚 */
+function dictLoadNote() {
+  const t = form.target;
+  let states = 0, cityTotal = 0;
+  t.countries.forEach((c) => regionsOf(c).forEach((r) => { states++; cityTotal += r.total; }));
+  if (!t.need_region) return '<div class="tip">Region targeting off: neither region nor city dictionary is loaded, '
+    + 'this offer covers ' + states + ' regions / ~' + cityTotal.toLocaleString() + 'city rows skipped.</div>';
+  if (!t.need_city) return '<div class="tip">Only the region dictionary is loaded (' + states + ' regions), the city dictionary of ~'
+    + cityTotal.toLocaleString() + 'is skipped.</div>';
+  return '<div class="tip warn">Full region + city dictionary loaded (' + states + ' regions / ~'
+    + cityTotal.toLocaleString() + ' cities).</div>';
+}
+function showGeoJSON() {
+  const rj = buildRegionJSON(), cj = buildCityJSON();
+  const cnt = Object.keys(cj).map((c) => c + ' ' + cj[c].length + ' cities').join('，');
+  $('#layer').innerHTML = '<div class="mask" onclick="if(event.target===this)closeLayer()"><div class="dlg w960">'
+    + '<div class="h">region / city payload<a onclick="closeLayer()">×</a></div><div class="b">'
+    + '<div class="small gray">region — key is the region id, value is "all" or an array of city codes, keys sorted by region name</div>'
+    + '<div class="pv" style="margin:6px 0 14px">' + esc(regionJSONString(1)) + '</div>'
+    + '<div class="small gray">city — flattened from the region arrays in key order (' + esc(cnt) + '）</div>'
+    + '<div class="pv" style="margin-top:6px">' + esc(JSON.stringify(cj, null, 2)) + '</div>'
+    + '<div class="tip">The prototype ships sample cities only, so the expanded "all" count is smaller than the real dictionary.</div>'
+    + '</div><div class="f"><button class="btn" onclick="closeLayer()">Close</button></div></div></div>';
+}
+/* 批量粘贴 State,City：解析并逐类回报，不静默丢弃 */
+function pasteGeo() {
+  $('#layer').innerHTML = '<div class="mask" onclick="if(event.target===this)closeLayer()"><div class="dlg w960">'
+    + '<div class="h">Paste State,City List<a onclick="closeLayer()">×</a></div><div class="b">'
+    + '<div class="row"><span class="small gray">Country</span>'
+    + '<select id="pgC" style="width:150px">' + form.target.countries.filter((c) => GEO_DATA[c]).map((c) => '<option>' + c + '</option>').join('') + '</select>'
+    + '<span class="small gray">one per line, format: region,city</span></div>'
+    + '<textarea id="pgT" rows="8" class="mono" style="margin-top:8px" placeholder="veracruz,xalapa&#10;veracruz,xalapa-enriquez&#10;jalisco,guadalajara"></textarea>'
+    + '<div class="tip">City names repeat across regions, so the region is required. Anything unmatched is listed separately.</div>'
+    + '</div><div class="f"><button class="btn" onclick="closeLayer()">Cancel</button>'
+    + '<button class="btn pri" onclick="runPasteGeo()">Parse &amp; Select</button></div></div></div>';
+}
+/* ---------- 7. Creative Info ---------- */
+function cardCreative() {
+  const c = form.creative;
+  const badPic = c.pictures.filter((x) => !STD_DIMS.includes(x.s)).length;
+  let h = cardHead('creative', 'Creative Info',
+    'Size and filename checks relaxed; non-standard sizes can be auto-cropped',
+    '');
+
+  /* 左右两栏：左边 Picture Info，右边 Video Info */
+  h += '<div class="g2c">'
+    + '<div class="sec"><div class="sh">Picture Info'
+    + '<span class="row" style="gap:6px;font-weight:400">'
+    + (badPic ? '<button class="btn sm" onclick="autoFitAll()">Auto-crop All</button>' : '')
+    + '<button class="btn sm" onclick="addCr(\'pictures\')">+ Upload</button></span></div><div class="sb" style="padding:0">'
+    + '<table class="t"><thead><tr><th style="width:44px">ID</th><th>Name</th><th class="ct" style="width:104px">Dimension</th>'
+    + '<th class="ct" style="width:72px">Source</th><th class="ct" style="width:118px">Action</th></tr></thead><tbody>'
+    + (c.pictures.length ? c.pictures.map((x, i) => {
+        const std = STD_DIMS.includes(x.s);
+        return '<tr class="' + (std ? '' : 'bad') + '"><td class="mono small">' + esc(x.id) + '</td>'
+          + '<td class="mono small brk">' + esc(x.n) + '</td>'
+          + '<td class="ct"><span class="tag ' + (std ? 'g' : 'o') + '">' + esc(x.s) + '</span></td>'
+          + '<td class="small gray ct">' + esc(x.src) + '</td>'
+          + '<td class="ct" style="white-space:nowrap">'
+          + (std ? '' : '<button class="btn sm" onclick="autoFit(' + i + ')" title="Auto-crop to the closest standard size">auto</button> ')
+          + '<button class="btn lnk" onclick="form.creative.pictures.splice(' + i + ',1);render()">Remove</button></td></tr>';
+      }).join('') : '<tr><td colspan="5" class="gray small">Nothing uploaded</td></tr>')
+    + '</tbody></table></div>'
+    + '</div>';
+
+  h += '<div class="sec"><div class="sh">Video Info'
+    + '<button class="btn sm" onclick="addCr(\'videos\')">+ Upload</button></div><div class="sb">'
+    + (c.videos.length ? c.videos.map((x, i) => '<div class="row" style="margin-bottom:6px">'
+        + '<span class="tag gray mono">' + esc(x.n) + '</span><span class="small gray">' + esc(x.s) + '</span>'
+        + '<button class="btn lnk" onclick="form.creative.videos.splice(' + i + ',1);render()">Remove</button></div>').join('')
+      : '<div class="gray small">Nothing uploaded</div>')
+    + '</div></div>'
+    + '</div>';
+  return h + '</div></div>';
+}
+/* auto：挑最接近的标准尺寸，按面积差最小取 */
+function autoFit(i) {
+  const p = form.creative.pictures[i];
+  const [w, hh] = String(p.s).split('x').map(Number);
+  let best = STD_DIMS[0], diff = Infinity;
+  STD_DIMS.forEach((d) => {
+    const [a, b] = d.split('x').map(Number);
+    const g = Math.abs(a / b - (w || 1) / (hh || 1));
+    if (g < diff) { diff = g; best = d; }
+  });
+  const from = p.s;
+  p.s = best; p.src = 'auto-cropped';
+  pushLog('Creative Info', 'Creative ' + p.n + ' auto-cropped ' + from + ' → ' + best);
+  toast(p.n + '：' + from + ' → ' + best); render();
+}
+function autoFitAll() {
+  form.creative.pictures.forEach((x, i) => { if (!STD_DIMS.includes(x.s)) autoFit(i); });
+}
+function addCr(kind) {
+  const n = form.creative[kind].length + 1;
+  form.creative[kind].push(kind === 'pictures'
+    ? { id:'p' + n, n:'new_image' + n + '.jpg', s:'1080x540', src:'manual upload' }
+    : { id:'v' + n, n:'new_video' + n + '.mp4', s:'720x1280 / 15s', src:'manual upload' });
+  toast('Prototype only: one creative added'); render();
+}
+
+/* ---------- 8. Tracking Info（含解析与提醒） ---------- */
+function cardTracking() {
+  const t = form.tracking;
+  let h = cardHead('tracking', 'Tracking Info',
+    'Adv Link → Generate → Tracking Link, with parsing and validation',
+    '<button class="btn sm" onclick="openMacroDoc()">Macros</button>');
+
+  /* Adv Link 是整条链路的输入：输入框下方就是 Generate，点开后在弹窗里配监测参数 */
+  h += '<div class="sec"><div class="sh">Adv Link</div><div class="sb">'
+    + '<textarea rows="2" class="mono" placeholder="paste the link from upstream" oninput="setv(\'tracking.adv_link\',this.value)">' + esc(t.adv_link) + '</textarea>'
+    + '<div class="row" style="margin-top:8px">'
+    + '<button class="btn pri sm" onclick="openGenerate()">Generate</button></div>'
+    + '</div></div>';
+
+  h += linkBlock('click');
+
+  /* 展示监测是选填项，默认收起，点一下再展开 */
+  h += '<div class="row" style="margin:0 0 14px">'
+    + '<button class="btn sm" onclick="openImp=!openImp;render()">'
+    + (openImp ? 'Hide Adv Impression Tracking Link ▴' : 'Configure Adv Impression Tracking Link ▾') + '</button>'
+    + '</div>'
+    + (openImp ? linkBlock('view') : '');
+  return h + '</div></div>';
+}
+
+function linkBlock(kind) {
+  const t = form.tracking, isClick = kind === 'click';
+  const url = isClick ? t.tracking_link : t.adv_impression_link;
+  const issues = validateLink(url, kind), p = parseLink(url);
+  const errs = issues.filter((x) => x.level === 'err'), wrn = issues.filter((x) => x.level === 'warn');
+  let h = '<div class="sec"><div class="sh">' + (isClick ? 'Tracking Link (Click)' : 'Adv Impression Tracking Link (View)')
+    + '<span class="row" style="gap:6px;font-weight:400">'
+    + (isClick ? '' : '<button class="btn sm" onclick="autoGenerate(\'view\')">Auto Generate</button>')
+    + '</span></div><div class="sb">'
+    + '<textarea rows="3" class="mono" placeholder="paste the MMP ' + (isClick ? ' click ' : ' impression ') + 'tracking link"'
+    + ' oninput="setUrl(\'' + kind + '\',this.value)">' + esc(url) + '</textarea>';
+  if (issues.length) {
+    h += '<div style="margin-top:8px">' + issues.map((x) => '<div class="tip ' + (x.level === 'err' ? 'err' : 'warn') + '">' + esc(x.msg)
+      + (x.fix === 'fill' ? ' <a onclick="fillMissing(\'' + kind + '\')">Fill Missing</a>' : '')
+      + (x.fix === 'auto' ? ' <a onclick="autoGenerate(\'' + kind + '\')">Auto Generate</a>' : '')
+      + (x.fix === 'macro' ? ' <a onclick="openMacroDoc()">View Macros</a>' : '') + '</div>').join('') + '</div>';
+  }
+  if (p.ok) {
+    h += '<div class="ro" style="margin-top:10px"><div class="row small">'
+      + '<span class="gray">host</span><b class="mono">' + esc(p.host) + '</b>'
+      + '<span class="gray">path</span><b class="mono">' + esc(p.path || '(empty)') + '</b>'
+      + '<span class="gray">params</span><b>' + p.params.length + '</b></div></div>' + paramTable(kind, p);
+  }
+  return h + '</div></div>';
+}
+function paramTable(kind, p) {
+  /* 一张表统一展示解析出来的参数：参数 / 值 / 含义 / 删除 */
+  let h = '<div class="sec" style="margin-top:10px"><div class="sh">Parse &amp; Identify</div><div class="sb" style="padding:0">'
+    + '<table class="t"><thead><tr><th style="width:190px">Parameter</th><th>Value</th>'
+    + '<th style="width:230px">Description</th><th style="width:60px">Delete</th></tr></thead><tbody>'
+    + (p.params.length ? p.params.map((x, i) => {
+        const cls = classifyParam(x.k);
+        const bm = /\{@[^}]*@\}/.test(x.v) && !MACRO_SET.has((x.v.match(/\{@[^}]*@\}/) || [''])[0]);
+        const md = MACROS.find((m) => m.m === x.v);
+        const desc = PARAM_DESC[x.k] || (md ? md.d : '自定义参数，3S 原样透传');
+        return '<tr class="' + (bm ? 'bad' : '') + '">'
+          + '<td>' + (cls === 'required' ? '<span class="mono">' + esc(x.k) + '</span>'
+              : '<input type="text" class="mono" value="' + esc(x.k) + '" oninput="setParam(\'' + kind + '\',' + i + ',\'k\',this.value)">') + '</td>'
+          + '<td><input type="text" class="mono" value="' + esc(x.v) + '" oninput="setParam(\'' + kind + '\',' + i + ',\'v\',this.value)"></td>'
+          + '<td class="small">' + esc(desc) + '</td>'
+          + '<td class="ct"><a title="Delete this parameter" onclick="delParam(\'' + kind + '\',' + i + ')">🗑</a></td></tr>';
+      }).join('') : '<tr><td colspan="4" class="gray small">No parameter parsed from the link</td></tr>')
+    + '</tbody></table></div></div>'
+    + '<div class="row" style="margin-top:8px"><button class="btn sm" onclick="addParam(\'' + kind + '\')">+ Add Parameter</button></div>';
+  return h;
+}
+function openMacroDoc() {
+  $('#layer2').innerHTML = '<div class="mask" style="z-index:140" onclick="if(event.target===this)closeLayer2()"><div class="dlg w960">'
+    + '<div class="h">Supported Macros<a onclick="closeLayer2()">×</a></div><div class="b">'
+    + '<p class="small gray">Parameter values may only use the macros below or hardcoded values; anything else is blocked on save.</p>'
+    + '<table class="t" style="margin-top:10px"><thead><tr><th style="width:230px">Macro</th><th>Description</th><th style="width:220px">Sample</th></tr></thead><tbody>'
+    + MACROS.map((x) => '<tr><td class="mono">' + esc(x.m) + (x.real ? ' <span class="tag g">live</span>' : '') + '</td>'
+        + '<td class="small">' + esc(x.d) + '</td><td class="mono small gray">' + esc(x.s) + '</td></tr>').join('')
+    + '</tbody></table><div class="tip warn">Rows tagged “live” come from the current 3S config; the rest are prototype samples and need to be checked against the 3S macro list.</div>'
+    + '</div><div class="f"><button class="btn" onclick="closeLayer2()">Close</button></div></div></div>';
+}
+
+function runPasteGeo() {
+  const c = ($('#pgC') || {}).value, txt = ($('#pgT') || {}).value || '';
+  if (!c) return toast('Select a country that has a dictionary first', 'warn');
+  const ok = [], noRegion = [], noCity = [];
+  rows(txt).forEach((line) => {
+    const p = line.split(/[,，\t]/).map((x) => x.trim().toLowerCase()).filter(Boolean);
+    if (p.length < 2) return noCity.push(line + '(missing region)');
+    const r = regionsOf(c).find((x) => x.name === p[0]);
+    if (!r) return noRegion.push(p[0]);
+    const city = r.cities.find((x) => x.name === p[1]);
+    if (!city) return noCity.push(p.join(','));
+    const m = form.target.region[c] = form.target.region[c] || {};
+    if (m[r.rid] === 'all') return ok.push(p[1] + '(region already set to all, skipped)');
+    const arr = m[r.rid] = Array.isArray(m[r.rid]) ? m[r.rid] : [];
+    if (!arr.includes(city.id)) arr.push(city.id);
+    ok.push(p[1]);
+  });
+  closeLayer(); render();
+  const msg = 'Parsed ' + ok.length + ''
+    + (noRegion.length ? '; unmatched regions: ' + [...new Set(noRegion)].join('、') : '')
+    + (noCity.length ? '; unmatched cities: ' + noCity.slice(0, 5).join('、') + (noCity.length > 5 ? ' etc.' + noCity.length + '' : '') : '');
+  toast(msg, (noRegion.length || noCity.length) ? 'warn' : '');
+}
+
+/* ---------- 9. Integration Info ---------- */
+function cardIntegration() {
+  const g = form.integration;
+  let h = cardHead('integration', 'Integration Info',
+    'Decide auto-S2S click cap and cross-offer BT while creating the offer');
+  h += '<div class="fi">' + L('是否接入自动对接渠道') + '<div class="c"><div class="row">'
+    + '<label class="chk"><input type="checkbox" ' + (g.auto_channel ? 'checked' : '')
+    + ' onchange="setv(\'integration.auto_channel\',1);render()">是</label>'
+    + '<label class="chk"><input type="checkbox" ' + (g.auto_channel ? '' : 'checked')
+    + ' onchange="setv(\'integration.auto_channel\',0);render()">否</label>'
+    + '</div></div></div>'
+    + (g.auto_channel ? '<div class="fi">' + L('Auto S2S Channels') + '<div class="c">'
+        + '<textarea rows="2" class="mono" placeholder="one channel uuid per line, empty = all connected channels" oninput="setv(\'integration.auto_channel_list\',this.value)">' + esc(g.auto_channel_list) + '</textarea>'
+        + '<div class="tip">' + rows(g.auto_channel_list).length + ' channels</div></div></div>'
+      /* 手绘稿：建单模块支持选择是否调整自动对接渠道的 click cap + 跨 offer bt */
+      + '<div class="sec"><div class="sh">Onboarding Settings</div><div class="sb">'
+      + '<div class="fi">' + L('Adjust Click Cap') + '<div class="c"><div class="row">'
+      + chkBool('integration.adjust_click_cap', g.adjust_click_cap)
+      + (g.adjust_click_cap ? '<span style="width:140px">' + inp('integration.click_cap', g.click_cap, { type:'number' }) + '</span>'
+          + '<span class="small gray keep">clicks / day</span>'
+          + ii('Off keeps the default click cap from channel onboarding; this one is per auto-S2S channel') : '')
+      + '</div></div></div>'
+      + '<div class="fi">' + L('Cross-offer BT') + '<div class="c"><div class="row">'
+      + chkBool('integration.cross_offer_bt', g.cross_offer_bt)
+      + (g.cross_offer_bt ? '<span style="width:220px">' + inp('integration.cross_offer_bt_group', g.cross_offer_bt_group, { cls:'mono' }) + '</span>'
+          + ii('Offers in the same BT group share blacklists and dedup rules') : '')
+      + '</div></div></div>'
+      + '</div></div>' : '')
+    + '';
+  return h + '</div></div>';
+}
+
+/* 变更日志：offer 维度所有模块的改动集合 */
+function openLog() {
+  $('#layer').innerHTML = '<div class="mask" onclick="if(event.target===this)closeLayer()"><div class="dlg w960">'
+    + '<div class="h">Offer Change Log<a onclick="closeLayer()">×</a></div><div class="b">'
+    + '<p class="small gray">All changes made to this offer across modules. The prototype only records actions from the current session.</p>'
+    + '<table class="t" style="margin-top:10px"><thead><tr><th style="width:130px">Time</th><th style="width:130px">Operator</th>'
+    + '<th style="width:150px">Module</th><th>Change</th></tr></thead><tbody>'
+    + (LOGS.length ? LOGS.map((x) => '<tr><td class="small mono">' + esc(x.t) + '</td><td class="small">' + esc(x.who) + '</td>'
+        + '<td><span class="tag gray">' + esc(x.sec) + '</span></td><td class="small">' + esc(x.msg) + '</td></tr>').join('')
+      : '<tr><td colspan="4" class="gray small">No changes yet</td></tr>')
+    + '</tbody></table></div><div class="f"><button class="btn" onclick="closeLayer()">Close</button></div></div></div>';
+}
+
+/* ============================================================
+   右侧锚点导航 + 渲染入口
+   摘要标签只暴露结论：必填未完成 / 提醒数 / 关键计数
+   ============================================================ */
+let curSec = SECS[0].k;
+function navBadge(k) {
+  const e = secErrors(k).length, w = secWarns(k).length;
+  if (e) return { t: e + ' required missing', cls:'err' };
+  if (w) return { t: w + ' warnings', cls:'warn' };
+  if (k === 'target') { const g = geoTotals(); return { t: (form.target.global ? 'Global / ' : '') + g.countries + ' countries / '
+    + (form.target.need_region ? g.states + ' regions / ' + g.cities + ' cities' : 'country level only'), cls:'ok' }; }
+  if (k === 'creative') return { t: form.creative.pictures.length + ' pictures / ' + form.creative.videos.length + ' videos', cls:'ok' };
+  if (k === 'tracking') return { t:'Passed', cls:'ok' };
+  return { t:'Completed', cls:'ok' };
+}
+function renderNav() {
+  $('#nav').innerHTML = '<div class="nt">Modules</div>' + SECS.map((s) => {
+    const b = navBadge(s.k);
+    return '<a class="ni' + (curSec === s.k ? ' on' : '') + '" onclick="goSec(\'' + s.k + '\')">'
+      + esc(s.name) + (s.nw ? ' <span class="tag nw">New</span>' : '')
+      + '<span class="bd ' + b.cls + '">' + esc(b.t) + '</span></a>';
+  }).join('');
+}
+function goSec(k) {
+  const el = document.getElementById(k);
+  if (!el) return;
+  window.scrollTo({ top: el.offsetTop - 62, behavior:'smooth' });
+  curSec = k; renderNav();
+}
+function spy() {
+  let cur = curSec;
+  SECS.forEach((s) => { const el = document.getElementById(s.k); if (el && el.getBoundingClientRect().top <= 140) cur = s.k; });
+  if (cur !== curSec) { curSec = cur; renderNav(); }
+}
+window.addEventListener('scroll', spy);
+
+function renderCtx() {
+  const a = form.adv;
+  const b = form.basic;
+  $('#ctx').innerHTML = '<span class="kv">Advertiser <b>' + esc(a.advertiser || '—') + '</b></span>'
+    + '<span class="kv">Package <b class="mono">' + esc(a.package_name || '—') + '</b></span>'
+    + '<span class="kv">Offer ID <b class="mono">' + esc(b.offer_id || '—') + '</b></span>'
+    + '<span class="kv">Offer UUID <b class="mono">' + esc(b.offer_uuid || '—') + '</b></span>';
+}
+function renderFoot() {
+  const o = buildOffer(), bad = errCount(o);
+  const blocked = bad || SECS.some((x) => secErrors(x.k).length);
+  $('#foot').innerHTML = '<div class="row" style="justify-content:center;width:100%">'
+    + '<button class="btn" onclick="openLog()">Change Log</button>'
+    + '<button class="btn pri" ' + (blocked ? 'disabled' : '') + ' onclick="doCreate()">Save Offer</button>'
+    + '</div>';
+}
+/* 创建：单条 Offer，先把汇总摊开给人确认 */
+function doCreate() {
+  const o = buildOffer();
+  if (errCount(o) || SECS.some((x) => secErrors(x.k).length)) return toast('There are blockers; fix them before saving', 'err');
+  const kv = (k, v) => '<div class="row small" style="gap:6px"><span class="gray" style="width:120px;text-align:right">'
+    + k + '</span><b>' + v + '</b></div>';
+  confirmBox('Confirm saving this offer',
+    '<div class="ro">'
+    + kv('Offer Name', '<span class="mono">' + esc(o.name) + '</span>')
+    + kv('Offer UUID', '<span class="mono">' + esc(o.uuid) + '</span>')
+    + kv('Link Type', esc(LINK_TYPES[o.link_type] || o.link_type))
+    + kv('Payout', '$' + (o.price == null ? '—' : o.price) + ' <span class="gray">/ Adv $' + (o.advPrice == null ? '—' : o.advPrice) + '</span>')
+    + kv('Channel Cap', o.cap == null ? 'no limit' : o.cap)
+    + kv('Targeting', (form.target.global ? 'Global' : o.countries.join(', ') || '—')
+        + (form.target.need_region ? ' <span class="gray">' + o.states + ' regions / ' + o.cities + ' cities</span>' : ''))
+    + '</div>'
+    + (o.issues.length ? '<div style="margin-top:10px">' + o.issues.map((x) =>
+        '<div class="tip ' + (x.level === 'err' ? 'err' : 'warn') + '">' + esc(x.msg) + '</div>').join('') + '</div>' : ''),
+    () => {
+      closeLayer();
+      pushLog('Create Offer', 'Offer created: ' + o.uuid);
+      $('#layer').innerHTML = '<div class="mask"><div class="dlg"><div class="h">Result<a onclick="closeLayer()">×</a></div><div class="b">'
+        + '<div class="row"><span class="tag g">Created</span><b class="mono">' + esc(o.uuid) + '</b></div>'
+        + '<div class="row small gray" style="margin-top:6px">Offer ID 3119805 · ' + esc(o.name) + '</div>'
+        + (form.integration.auto_channel ? '<div class="tip">Auto S2S is on'
+            + (form.integration.adjust_click_cap ? '，click cap = ' + form.integration.click_cap : '')
+            + (form.integration.cross_offer_bt ? ', cross-offer BT group = ' + esc(form.integration.cross_offer_bt_group) : '')
+            + '. Continue in Delivery to configure scaling.</div>' : '')
+        + '<div class="tip">Prototype only: the real build calls the create API and surfaces failures with a retry.</div>'
+        + '</div><div class="f"><button class="btn" onclick="closeLayer()">Done</button>'
+        + '<button class="btn pri" onclick="closeLayer();toast(\'Prototype only: jump to Delivery settings\')">Go to Delivery</button></div></div></div>';
+    });
+}
+
+function render() {
+  renderCtx();
+  $('#main').innerHTML = cardAdv() + cardBasic() + cardSettle() + cardCap() + cardTarget()
+    + cardTracking() + cardCreative() + cardIntegration();
+  renderNav(); renderFoot();
+}
+render();
+</script>
+</body>
+</html>
