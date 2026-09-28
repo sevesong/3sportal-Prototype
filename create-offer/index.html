@@ -177,7 +177,14 @@ const SECS = [
   { k: 'integration',name: 'Integration Info',         note: 'Auto-S2S click cap + cross-offer BT' },
 ];
 
-const PLATFORMS = { android: 'Android', ios: 'iOS' };
+const PLATFORMS = { ios: 'ios', android: 'android', windows: 'windows', all: 'all', others: 'others' };
+/* Platform 是多选，链接规则只认一个主 OS：优先 android，其次 ios */
+const primaryOS = () => {
+  const a = form.target.platform || [];
+  if (a.includes('android')) return 'android';
+  if (a.includes('ios')) return 'ios';
+  return 'android';
+};
 /* Offer Type：三选一，默认 direct */
 const OFFER_TYPES = { direct: 'Direct', indirect_manual: 'Indirect_manual', indirect_api: 'Indirect API' };
 /* 是否拉活：UA 拉新 / RT 拉活，仅报表维度 */
@@ -185,7 +192,7 @@ const REACT_TYPES = { ua: 'UA', rt: 'RT' };
 const SETTLE_TYPES = { cpi: 'CPI', cpe: 'CPE', cps: 'CPS' };
 const CHN_SETTLE_TYPES = { cpi: 'CPI', cpe: 'CPE', cps: 'CPS' };
 /* 手绘稿：Target Device 为 phone / tablet / all */
-const DEVICE_MODES = { all: 'All', phone: 'Phone', tablet: 'Tablet' };
+const DEVICE_MODES = { phone: 'phone', tablet: 'tablet', all: 'all' };
 const TRACK_WAYS = { s2s: 'S2S', sdk: 'SDK', pixel: 'Pixel' };
 const LINK_TYPES = { normal: 'Normal', deeplink: 'Deeplink', onelink: 'OneLink', ctv: 'CTV', vta: 'VTA' };
 /* Track Link Type：CTA 点击归因 / VTA 展示归因 / Mix 混合 */
@@ -204,10 +211,9 @@ const EXIST_NAMES = ['Xanh SM - IOS - 55', 'Xanh SM - IOS - 54', 'Domino Star - 
 const EXIST_UUIDS = ['sm_xanh_ios_vn_dp', 'domino_star_and_11', 'domino_star_and_12', 'nep_domino_br_and_iaa'];
 
 /* Geo 一级：国家。原型只保留 BR / MX 两个示例国家，都带 region / city 三级字典 */
-const COUNTRY_LIST = [['US','United States'],['UK','United Kingdom'],['BR','Brazil'],['MX','Mexico'],['ID','Indonesia'],
-  ['IN','India'],['VN','Vietnam'],['TH','Thailand'],['PH','Philippines'],['SA','Saudi Arabia']];
-/* 快捷勾选只展示国家英文简称；BR / MX 带 region / city 字典，其余演示为无字典 */
-const TOP_GEOS = ['US', 'UK', 'BR', 'MX', 'ID', 'IN', 'VN', 'TH', 'PH', 'SA'];
+/* 原型只演示带完整 region / city 字典的 BR 与 MX */
+const COUNTRY_LIST = [['BR','Brazil'],['MX','Mexico']];
+const TOP_GEOS = ['BR', 'MX'];
 const CNAME = {}; COUNTRY_LIST.forEach(([c, n]) => { CNAME[c] = n; });
 const ALL_COUNTRIES = Object.keys(CNAME);
 
@@ -333,16 +339,17 @@ const form = {
   },
   target: {
     countries: ['BR', 'MX'],
-    global: 0,
-    /* region = {国家: {region_id: 'all' | [city_id,...]}}；city 字段由它派生，不单独存
-       这里刻意让 MX veracruz 只选了 xalapa 没选别名码 xalapa-enriquez，用来演示漏量提醒 */
-    region: { BR: { '726': 'all', '3971': ['62704', '316192'] }, MX: { '9781': ['734109', '38641'] } },
-    device: 'all', platform: 'android',
+    /* region = {国家: {region_id: 'all' | [city_id,...]}}，'all' 表示整州（子层级未取消过）
+       loadedR / loadedC 模拟懒加载：点上一层级的具体值才拉下一层级字典 */
+    region: {},
+    loadedR: {}, loadedC: {},
+    /* Platform / Device 都是多选；真实新建页初始为空，这里给演示值 */
+    platform: ['android'], platform_other: '', device: ['all'],
     version_from: '8.0', version_to: '',
-    /* 两级按需开关：不需要州 / 城市定向的 offer 不加载对应字典，避免页面卡顿 */
-    need_region: 1,
-    need_city: 1,
-    cancel_b_limit: 0,  /* 取消 B 类渠道 Region / City 定向限制 */
+    /* 页面不展示、按默认值提交：版本校验开关与流量类型 */
+    block_wrong_os: 1,
+    traffic_source: ['non-incent', 'no adult'],
+    traffic_network: ['wifi', '2G', '3G', '4G'],
   },
   creative: { pictures:[{ id:'p1', n:'1200x627_a.jpg', s:'1200x627', src:'manual upload' },
                         { id:'p2', n:'raw_1080x540.jpg', s:'1080x540', src:'manual upload' }],
@@ -529,6 +536,24 @@ function chk(path, cur, map, after) {
     + esc(map[k]) + '</label>').join('') + (after || '') + '</div>';
 }
 /* 布尔字段：是 / 否 两个复选框 */
+/* 多选复选框：excl 里的键与其他键互斥（勾 all 就清掉其余，勾其余就去掉 all） */
+function chkMulti(path, arr, map, excl, after) {
+  arr = arr || []; excl = excl || [];
+  return '<div class="row">' + Object.keys(map).map((k) => '<label class="chk"><input type="checkbox" '
+    + (arr.includes(k) ? 'checked' : '') + ' onchange="toggleMulti(\'' + path + '\',\'' + k + '\',this.checked,\''
+    + excl.join(',') + '\')">' + esc(map[k]) + '</label>').join('') + (after || '') + '</div>';
+}
+function toggleMulti(path, k, on, excl) {
+  const ex = String(excl || '').split(',').filter((x) => x);
+  const cur = path.split('.').reduce((o, x) => o[x], form) || [];
+  let a = cur.slice();
+  if (on) {
+    if (ex.includes(k)) a = [k];                       /* 勾互斥项：只剩它 */
+    else { a = a.filter((x) => !ex.includes(x)); if (!a.includes(k)) a.push(k); }
+  } else a = a.filter((x) => x !== k);
+  setv(path, a); render();
+}
+
 function chkBool(path, on, after) {
   return '<div class="row">'
     + '<label class="chk"><input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="setv(\'' + path + '\',1);render()">Yes</label>'
@@ -622,7 +647,86 @@ function splitChannels() {
    这里让 city 由 region 派生而非独立存储，从结构上消灭「region 与 city 口径不一致」——
    那是现网最常见也最危险的一类脏数据。
    ============================================================ */
-let g3 = { country: 'BR', rid: null, qRegion: '', qCity: '' };
+let g3 = { country: 'BR', rid: null, qCountry: '', qRegion: '', qCity: '' };
+
+/* ---- 懒加载：点上一层级的具体值，才把下一层级字典拉出来，并且默认全选 ---- */
+function loadRegions(c) {
+  const t = form.target;
+  const m = t.region[c] = t.region[c] || {};
+  regionsOf(c).forEach((r) => { if (m[r.rid] === undefined) m[r.rid] = 'all'; });
+  t.loadedR[c] = 1;
+}
+function loadCities(c, rid) {
+  const t = form.target;
+  const m = t.region[c] = t.region[c] || {};
+  if (m[rid] === undefined || (Array.isArray(m[rid]) && !m[rid].length)) m[rid] = 'all';   /* 拉出来默认全选 */
+  t.loadedC[c + '|' + rid] = 1;
+}
+/* ---- 勾选与下钻 ---- */
+function pickCountry(c, v) {
+  const t = form.target, a = t.countries, i = a.indexOf(c);
+  if (v && i < 0) { a.push(c); loadRegions(c); g3.country = c; g3.rid = null; }
+  if (!v && i >= 0) { a.splice(i, 1); delete t.region[c]; delete t.loadedR[c]; }
+  render();
+}
+function openCountry(c) {
+  const t = form.target;
+  g3.country = c; g3.rid = null; g3.qRegion = ''; g3.qCity = '';
+  if (!t.countries.includes(c)) { t.countries.push(c); loadRegions(c); }
+  else if (!t.loadedR[c]) loadRegions(c);
+  render();
+}
+function pickRegion(c, rid, v) {
+  const m = form.target.region[c] = form.target.region[c] || {};
+  if (v) {
+    m[rid] = 'all';
+    /* 勾选即把这个 region 的 city 拉到第三栏，和点击行的效果一致 */
+    g3.rid = rid; g3.qCity = '';
+    form.target.loadedC[c + '|' + rid] = 1;
+  } else {
+    m[rid] = [];            /* 取消勾选：保留 key，城市列表仍展示但全部未勾 */
+  }
+  render();
+}
+function openRegion(c, rid) {
+  const m = form.target.region[c] = form.target.region[c] || {};
+  g3.rid = rid; g3.qCity = '';
+  /* 与点国家行一致：点到一个没选中的 region，就把它下面的 city 拉出来并全选 */
+  if (m[rid] === undefined || (Array.isArray(m[rid]) && !m[rid].length)) m[rid] = 'all';
+  form.target.loadedC[c + '|' + rid] = 1;
+  render();
+}
+function pickCity(c, rid, id, v) {
+  const m = form.target.region[c] = form.target.region[c] || {};
+  const r = regionById(c, rid); if (!r) return;
+  const all = r.cities.map((x) => x.id);
+  let arr = m[rid] === 'all' ? all.slice() : (Array.isArray(m[rid]) ? m[rid].slice() : []);
+  const i = arr.indexOf(id);
+  if (v && i < 0) arr.push(id);
+  if (!v && i >= 0) arr.splice(i, 1);
+  /* 子层级一个都没取消就回到整州，新增城市自动覆盖 */
+  m[rid] = arr.length === all.length ? 'all' : arr;
+  render();
+}
+/* ---- 右侧选中情况标签：子层级没单独取消就标全选，否则给 已选/总数 ---- */
+function cityLabel(c, rid) {
+  const m = (form.target.region[c] || {}), v = m[rid], r = regionById(c, rid);
+  if (v === undefined || !r) return '';
+  if (v === 'all') return '<span class="tag g">Whole Region</span>';
+  const n = (v || []).length;
+  if (!n) return '<span class="gray">0/' + r.cities.length + ' city</span>';
+  return '<span class="tag o">' + n + '/' + r.cities.length + ' city</span>';
+}
+function regionLabel(c) {
+  const t = form.target;
+  if (!t.countries.includes(c)) return '';
+  if (!t.loadedR[c]) return '<span class="gray">not loaded</span>';
+  const m = t.region[c] || {}, rs = regionsOf(c);
+  const picked = rs.filter((r) => m[r.rid] === 'all' || (m[r.rid] || []).length);
+  const whole = picked.length === rs.length && rs.every((r) => m[r.rid] === 'all');
+  if (whole) return '<span class="tag g">Whole Country</span>';
+  return '<span class="tag o">' + picked.length + '/' + rs.length + ' Region</span>';
+}
 
 const regionsOf = (c) => ((GEO_DATA[c] || {}).regions || []);
 const regionById = (c, rid) => regionsOf(c).find((r) => String(r.rid) === String(rid));
@@ -704,9 +808,7 @@ function geoTotals() {
 /* 定向校验。按真实排查中反复出现的问题设计 */
 function geoIssues() {
   const t = form.target, out = [];
-  if (!t.countries.length && !t.global) out.push({ level:'err', msg:'Target Geo is required: select at least one country' });
-  if (t.global && t.countries.length) out.push({ level:'warn', msg:'Global is on, so per-country Region / City targeting will not apply' });
-  if (!t.need_region) return out;   /* 不需要州定向时，不校验 region / city */
+  if (!t.countries.length) out.push({ level:'err', msg:'Target Geo is required: select at least one country' });
   t.countries.forEach((c) => {
     const m = t.region[c] || {};
     const has = Object.keys(m).some((rid) => m[rid] === 'all' || (m[rid] || []).length);
@@ -743,157 +845,77 @@ function geoIssues() {
    勾选 = 加入 Target Geo，点行 = 下钻看它的州。选与看分开，避免误操作。 */
 function geoSelector() {
   const t = form.target;
-  if (!g3.country || (!CNAME[g3.country])) g3.country = t.countries[0] || 'BR';
+  if (!g3.country || !CNAME[g3.country]) g3.country = t.countries[0] || 'BR';
   const cc = g3.country;
-  const selCount = t.countries.length;
-  const regs = regionsOf(cc).filter((r) => !g3.qRegion || r.name.includes(g3.qRegion.toLowerCase()));
+  const qc = (g3.qCountry || '').trim().toLowerCase();
+  const qr = (g3.qRegion || '').trim().toLowerCase();
+  const qy = (g3.qCity || '').trim().toLowerCase();
   const curR = g3.rid ? regionById(cc, g3.rid) : null;
-  const cities = curR ? curR.cities.filter((x) => !g3.qCity || x.name.includes(g3.qCity.toLowerCase())) : [];
-  const mode = curR ? stateMode(cc, curR.rid) : 'none';
-  const picked = curR ? ((t.region[cc] || {})[curR.rid] || []) : [];
-  const q = (g3.qCountry || '').trim().toLowerCase();
+  const m = t.region[cc] || {};
 
-  let h = '<div class="geo3' + (t.need_region ? '' : ' off') + '" style="grid-template-columns:'
-    + (t.need_region ? (t.need_city ? '250px 1fr 1.15fr' : '250px 1fr') : '1fr') + '">';
+  let h = '<div class="geo3" style="grid-template-columns:270px 1fr 1.15fr">';
 
-  /* ---- 第一栏：国家（勾选即 Target Geo） ---- */
-  h += '<div><div class="ch"><span>① Country / Target Geo</span><span class="row" style="gap:6px">'
-    + '<b>' + selCount + '</b>'
-    + (selCount ? '<a class="small" onclick="clearGeo()">Clear</a>' : '') + '</span></div>'
+  /* ---- ① Geo：勾选即 Target Geo，点击行下钻并加载 region ---- */
+  const clist = COUNTRY_LIST.filter(([c, n]) => !qc || c.toLowerCase().includes(qc) || n.toLowerCase().includes(qc));
+  h += '<div><div class="ch"><span>① Geo</span></div>'
     + '<input class="srch" placeholder="Search country code or name" value="' + esc(g3.qCountry) + '" oninput="g3.qCountry=this.value;render()">'
-    + '<div class="cb">';
-  const clist = COUNTRY_LIST.filter(([c, n]) => !q || c.toLowerCase().includes(q) || n.includes(q));
-  h += clist.length ? clist.map(([c]) => countryRow(c, cc)).join('') : '<div class="gi gray">No matching country</div>';
-  h += '</div></div>';
-
-  /* ---- 第二栏：Region。仅在「需要州定向」on时渲染，关掉就完全不加载字典 ---- */
-  const noDict = !GEO_DATA[cc];
-  const notSel = !t.countries.includes(cc);
-  if (t.need_region) {
-    h += '<div><div class="ch"><span>② Region' + (cc ? '· ' + cc : '') + '</span>'
-      + (regionsOf(cc).length ? '<span class="row" style="gap:6px">'
-          + (Object.keys(t.region[cc] || {}).length ? '<a class="small" onclick="clearStates(\'' + cc + '\')">Clear</a>' : '')
-          + '</span>' : '') + '</div>'
-      + (regionsOf(cc).length ? '<input class="srch" placeholder="Search region name" value="' + esc(g3.qRegion) + '" oninput="g3.qRegion=this.value;render()">' : '')
-      + '<div class="cb">';
-    if (notSel) h += '<div class="gi gray">' + cc + ' is not selected as Target Geo yet; tick it to take effect</div>';
-    else if (noDict) h += '<div class="gi gray">No region dictionary for this country; runs nationwide</div>';
-    else if (!regs.length) h += '<div class="gi gray">No matching region</div>';
-    else h += regs.map((r) => {
-        const md = stateMode(cc, r.rid), n = stateCount(cc, r.rid);
-        const on = md === 'all';
-        return '<div class="gi' + (curR && String(curR.rid) === String(r.rid) ? ' on' : '') + '"'
-          + ' onclick="g3.rid=\'' + r.rid + '\';g3.qCity=\'\';render()">'
+    + '<div class="cb">'
+    + (clist.length ? clist.map(([c, n]) => {
+        const on = t.countries.includes(c);
+        return '<div class="gi' + (c === cc ? ' on' : '') + '" onclick="openCountry(\'' + c + '\')">'
           + '<label class="chk" style="margin:0;flex:1" onclick="event.stopPropagation()">'
-          + '<input type="checkbox" ' + (on ? 'checked' : '') + (md === 'part' ? ' data-part="1"' : '')
-          + ' onchange="setAll(\'' + cc + '\',\'' + r.rid + '\',this.checked)">'
-          + '<span class="nm">' + esc(r.name) + '</span></label>'
-          + '<span class="mt">' + (on ? '<span class="tag g">all ' + r.total + '</span>'
-              : md === 'part' ? '<span class="tag o">' + n + '/' + r.total + '</span>'
-              : '<span class="gray">' + r.total + '</span>') + '</span></div>';
-      }).join('');
-    h += '</div></div>';
-  }
+          + '<input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="pickCountry(\'' + c + '\',this.checked)">'
+          + '<b>' + c + '</b><span class="gray">' + esc(n) + '</span></label>'
+          + '<span class="mt">' + regionLabel(c) + '</span></div>';
+      }).join('') : '<div class="gi gray">No matching country</div>')
+    + '</div></div>';
 
-  /* ---- 第三栏：City。同样按需渲染 ---- */
-  if (t.need_region && t.need_city) {
-  h += '<div><div class="ch"><span>③ City' + (curR ? ' · ' + esc(curR.name) : '') + '</span>'
-    + (curR ? '<span class="row" style="gap:6px">'
-        + '<label class="chk" style="margin:0"><input type="checkbox" ' + (mode === 'all' ? 'checked' : '')
-        + ' onchange="setAll(\'' + cc + '\',\'' + curR.rid + '\',this.checked)">Whole region</label>'
-        + ii('Same as ticking the region in column two. Runs all ' + curR.total + ' cities, and newly added cities are covered automatically.') + '</span>' : '') + '</div>'
-    + (curR && mode !== 'all' ? '<input class="srch" placeholder="Search city name" value="' + esc(g3.qCity) + '" oninput="g3.qCity=this.value;render()">' : '')
+  /* ---- ② Region：点国家才加载，加载即全选；点击行下钻并加载 city ---- */
+  const rs = regionsOf(cc);
+  const regs = rs.filter((r) => !qr || r.name.includes(qr));
+  const loadedR = !!t.loadedR[cc];
+  h += '<div><div class="ch"><span>② Region</span></div>'
+    + '<input class="srch" placeholder="Search region name" value="' + esc(g3.qRegion) + '" oninput="g3.qRegion=this.value;render()">'
     + '<div class="cb">';
-  if (!curR) h += '<div class="gi gray">Pick a Region on the left</div>';
-  else if (mode === 'all') h += '<div class="gi gray">Whole-region “all” already covers ' + curR.total + ' cities</div>';
+  if (!loadedR) h += '<div class="gi gray">Click a country on the left to load its regions</div>';
+  else if (!regs.length) h += '<div class="gi gray">No matching region</div>';
+  else h += regs.map((r) => {
+      const on = m[r.rid] === 'all' || (m[r.rid] || []).length > 0;
+      return '<div class="gi' + (curR && String(curR.rid) === String(r.rid) ? ' on' : '') + '" onclick="openRegion(\'' + cc + '\',\'' + r.rid + '\')">'
+        + '<label class="chk" style="margin:0;flex:1" onclick="event.stopPropagation()">'
+        + '<input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="pickRegion(\'' + cc + '\',\'' + r.rid + '\',this.checked)">'
+        + '<span class="nm">' + esc(r.name) + '</span></label>'
+        + '<span class="mt">' + cityLabel(cc, r.rid) + '</span></div>';
+    }).join('');
+  h += '</div></div>';
+
+  /* ---- ③ City：最低层级，只勾选不展示子层级情况 ---- */
+  if (curR && !t.loadedC[cc + '|' + curR.rid]) loadCities(cc, curR.rid);
+  const loadedC = !!curR;
+  const cities = curR ? curR.cities.filter((x) => !qy || x.name.includes(qy)) : [];
+  const picked = curR ? (m[curR.rid] === 'all' ? curR.cities.map((x) => x.id) : (m[curR.rid] || [])) : [];
+  h += '<div><div class="ch"><span>③ City</span></div>'
+    + '<input class="srch" placeholder="Search city name" value="' + esc(g3.qCity) + '" oninput="g3.qCity=this.value;render()">'
+    + '<div class="cb">';
+  if (!curR) h += '<div class="gi gray">Click a region in the middle to load its cities</div>';
+  else if (!cities.length) h += '<div class="gi gray">No matching city</div>';
   else {
-    if (cities.length) h += '<div class="gg">' + (g3.qCity ? 'matched ' + cities.length + ' cities' : 'sample ' + cities.length + ' cities')
-      + '<span><a class="small" onclick="pickCities(\'' + cc + '\',\'' + curR.rid + '\',1)">Select All</a>'
-      + ' <a class="small" onclick="pickCities(\'' + cc + '\',\'' + curR.rid + '\',0)">Invert</a></span></div>';
-    h += cities.map((x) => '<div class="gi"><label class="chk" style="margin:0;flex:1"><input type="checkbox" '
-      + (picked.includes(x.id) ? 'checked' : '') + ' onchange="toggleCity(\'' + cc + '\',\'' + curR.rid + '\',\'' + x.id + '\',this.checked)">'
-      + esc(x.name) + '</label><span class="mt mono">' + x.id + '</span></div>').join('');
-    if (!cities.length) h += '<div class="gi gray">No matching city</div>';
-    h += '<div class="gi gray small">Sample cities in prototype: ' + curR.cities.length + ' of ' + curR.total + ' items</div>';
+    h += cities.map((x) => '<div class="gi"><label class="chk" style="margin:0;flex:1">'
+      + '<input type="checkbox" ' + (picked.includes(x.id) ? 'checked' : '') + ' onchange="pickCity(\'' + cc + '\',\'' + curR.rid + '\',\'' + x.id + '\',this.checked)">'
+      + esc(x.name) + '</label><span class="mt mono gray">' + x.id + '</span></div>').join('');
+    h += '<div class="gi gray small">Prototype ships ' + curR.cities.length + ' sample cities of the ' + curR.total + ' in this region</div>';
   }
   h += '</div></div>';
-  }
+
   h += '</div>';
   return h;
-}
-/* 国家行：勾选框负责选中，行点击负责下钻 */
-function countryRow(c, cur) {
-  const on = form.target.countries.includes(c);
-  const st = geoStatOf(c);
-  const meta = !GEO_DATA[c] ? '<span class="gray">no dictionary</span>'
-    : st.states ? '<span class="tag">' + st.states + 'r/' + st.cities + 'cities</span>'
-    : on ? '<span class="gray">nationwide</span>' : '<span class="gray">' + regionsOf(c).length + ' regions</span>';
-  return '<div class="gi' + (c === cur ? ' on' : '') + '" onclick="g3.country=\'' + c + '\';g3.rid=null;g3.qRegion=\'\';render()">'
-    + '<label class="chk" style="margin:0;flex:1" onclick="event.stopPropagation()">'
-    + '<input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="toggleCountry(\'' + c + '\',this.checked)">'
-    + '<b>' + c + '</b><span class="gray">' + CNAME[c] + '</span></label>'
-    + '<span class="mt">' + meta + '</span></div>';
 }
 function clearGeo() {
   confirmBox('Clear Target Geo', '<p class="small">This also clears the selected Region / City of every country.</p>', () => {
     form.target.countries = []; form.target.region = {};
+    form.target.loadedR = {}; form.target.loadedC = {};
     closeLayer(); render();
   });
-}
-function toggleCGroup() { /* 分组已取消，保留空实现避免旧调用报错 */ }
-function selectAllCountries() {
-  const a = form.target.countries;
-  const allOn = COUNTRY_LIST.every(([c]) => a.includes(c));
-  COUNTRY_LIST.forEach(([c]) => {
-    const i = a.indexOf(c);
-    if (allOn) { if (i >= 0) a.splice(i, 1); delete form.target.region[c]; }
-    else if (i < 0) { a.push(c); form.target.region[c] = form.target.region[c] || {}; }
-  });
-  render();
-}
-function clearStates(c) { form.target.region[c] = {}; g3.rid = null; render(); }
-/* 全选 / 反选当前可见城市，配合搜索用 */
-function pickCities(c, rid, all) {
-  const r = regionById(c, rid); if (!r) return;
-  const m = form.target.region[c] = form.target.region[c] || {};
-  if (m[rid] === 'all') return;
-  const vis = r.cities.filter((x) => !g3.qCity || x.name.includes(g3.qCity.toLowerCase()));
-  let arr = Array.isArray(m[rid]) ? m[rid] : [];
-  vis.forEach((x) => {
-    const i = arr.indexOf(x.id);
-    if (all) { if (i < 0) arr.push(x.id); }
-    else if (i >= 0) arr.splice(i, 1);
-  });
-  if (arr.length) m[rid] = arr; else delete m[rid];
-  render();
-}
-function geoStatOf(c) {
-  const m = form.target.region[c] || {};
-  let states = 0, cities = 0;
-  Object.keys(m).forEach((rid) => { if (m[rid] === 'all' || (m[rid] || []).length) { states++; cities += stateCount(c, rid); } });
-  return { states, cities };
-}
-function toggleCountry(c, v) {
-  const a = form.target.countries, i = a.indexOf(c);
-  if (v && i < 0) { a.push(c); if (!form.target.region[c]) form.target.region[c] = {}; }
-  if (!v && i >= 0) { a.splice(i, 1); delete form.target.region[c]; }
-  if (v) g3.country = c;
-  render();
-}
-function toggleCity(c, rid, id, v) {
-  const m = form.target.region[c] = form.target.region[c] || {};
-  if (m[rid] === 'all') return;
-  const a = m[rid] = Array.isArray(m[rid]) ? m[rid] : [];
-  const i = a.indexOf(id);
-  if (v && i < 0) a.push(id);
-  if (!v && i >= 0) a.splice(i, 1);
-  if (!a.length) delete m[rid];
-  render();
-}
-function setAll(c, rid, v) {
-  const m = form.target.region[c] = form.target.region[c] || {};
-  if (v) m[rid] = 'all'; else delete m[rid];
-  render();
 }
 /* ============================================================
    Tracking Link 引擎：解析 / 组装 / 自动生成 / 校验 / 宏渲染
@@ -960,9 +982,9 @@ function autoGenerate(kind) {
   const t = form.tracking, a = form.adv, r = MMP_RULES[t.third_party];
   if (!r || !r.click_host) return toast('当前 Third Party 无标准模板，请手工填写', 'warn');
   const host = kind === 'view' ? r.view_host : r.click_host;
-  const path = form.target.platform === 'ios' ? ('id' + (a.app_id || '554782625')) : a.package_name;
+  const path = primaryOS() === 'ios' ? ('id' + (a.app_id || '554782625')) : a.package_name;
   const params = [];
-  r.required.forEach((x) => { if (!x.os || x.os === form.target.platform) params.push({ k:x.k, v:x.v }); });
+  r.required.forEach((x) => { if (!x.os || x.os === primaryOS()) params.push({ k:x.k, v:x.v }); });
   if (kind === 'view') {
     const i = params.findIndex((x) => x.k === 'af_click_lookback');
     if (i >= 0) params[i] = { k:'af_viewthrough_lookback', v:'1d' };
@@ -1025,12 +1047,12 @@ function runGenerate() {
   if (!p.ok) return toast('Adv Link cannot be parsed; check for a missing https://', 'err');
   const R = t.rand;
   if (R.domain.on && R.domain.list.length) p.host = randExpr(R.domain.list);
-  if (!p.path && r.path_rule === 'bundle') p.path = form.target.platform === 'ios' ? ('id' + (a.app_id || '')) : a.package_name;
+  if (!p.path && r.path_rule === 'bundle') p.path = primaryOS() === 'ios' ? ('id' + (a.app_id || '')) : a.package_name;
   const has = {};
   p.params.forEach((x, i) => { has[x.k] = i; });
   /* 补齐当前 MMP 的必填参数，已有的不动 */
   (r.required || []).forEach((x) => {
-    if (x.os && x.os !== form.target.platform) return;
+    if (x.os && x.os !== primaryOS()) return;
     if (has[x.k] == null) { p.params.push({ k:x.k, v:x.v }); has[x.k] = p.params.length - 1; }
   });
   /* pid / agency / af_adset 三个维度写到对应参数上 */
@@ -1073,9 +1095,9 @@ function validateLink(url, kind) {
     + 'Make sure every candidate domain is registered with the MMP, otherwise those clicks are dropped');
   else if (wantHost && p.host !== wantHost) push('err', LINK_ERR.host(p.host, wantHost, MMPS[t.third_party]));
   if (r.path_rule === 'bundle') {
-    const want = form.target.platform === 'ios' ? ('id' + (a.app_id || '')) : a.package_name;
+    const want = primaryOS() === 'ios' ? ('id' + (a.app_id || '')) : a.package_name;
     if (!p.path) push('err', LINK_ERR.path_empty);
-    else if (form.target.platform === 'android' && p.path !== a.package_name) push('err', LINK_ERR.path_bundle(p.path, want));
+    else if (primaryOS() === 'android' && p.path !== a.package_name) push('err', LINK_ERR.path_bundle(p.path, want));
   }
   const bad = [];
   p.params.forEach((x) => {
@@ -1090,13 +1112,13 @@ function validateLink(url, kind) {
       + 'candidates must match what is registered with the MMP, otherwise attribution is dropped');
   });
   const has = new Set(p.params.map((x) => x.k));
-  const missing = (r.required || []).filter((x) => (!x.os || x.os === form.target.platform) && !has.has(x.k)).map((x) => x.k);
+  const missing = (r.required || []).filter((x) => (!x.os || x.os === primaryOS()) && !has.has(x.k)).map((x) => x.k);
   if (missing.length) push('err', LINK_ERR.missing(missing), 'fill');
   const emptyVals = p.params.filter((x) => x.k && !x.v).map((x) => x.k);
   if (emptyVals.length) push('warn', LINK_ERR.empty_val(emptyVals));
   p.params.forEach((x) => {
     const def = (r.required || []).concat(r.optional || []).find((y) => y.k === x.k);
-    if (def && def.os && def.os !== form.target.platform) push('warn', LINK_ERR.os_mismatch(x.k, def.os));
+    if (def && def.os && def.os !== primaryOS()) push('warn', LINK_ERR.os_mismatch(x.k, def.os));
   });
   if (t.is_agency && r.agency_param && !has.has(r.agency_param))
     push('warn', 'Agency clients must carry ' + r.agency_param + ', and the value must be whitelisted on the MMP side');
@@ -1112,7 +1134,7 @@ function fillMissing(kind) {
   const has = new Set(p.params.map((x) => x.k));
   let n = 0;
   (r.required || []).forEach((x) => {
-    if (x.os && x.os !== form.target.platform) return;
+    if (x.os && x.os !== primaryOS()) return;
     if (!has.has(x.k)) { p.params.push({ k:x.k, v:x.v }); n++; }
   });
   const nu = buildLink(p);
@@ -1218,7 +1240,11 @@ function secErrors(k) {
     if (!form.cap.chn_conv_cap.on && !(form.cap.chn_conv_cap.val > 0)) e.push('Channel Conversion Cap value required when OPEN is off');
     if (!form.cap.chn_click_cap.on && !(form.cap.chn_click_cap.val > 0)) e.push('Click Cap value required when OPEN is off');
   }
-  if (k === 'target') geoIssues().filter((x) => x.level === 'err').forEach((x) => e.push(x.msg));
+  if (k === 'target') {
+    if (!(form.target.platform || []).length) e.push('Platform is required');
+    if (!(form.target.device || []).length) e.push('Device is required');
+    geoIssues().filter((x) => x.level === 'err').forEach((x) => e.push(x.msg));
+  }
   if (k === 'creative') {
     if (!form.creative.pictures.length && !form.creative.videos.length) e.push('Upload at least one picture or video');
   }
@@ -1529,35 +1555,26 @@ function cardTarget() {
 
   /* 全部按字段平铺，不再分「设备与版本定向 / 常用 Geo / Target Geo」几个小标题 */
   h += '<div class="g2">'
-    + '<div class="fi">' + L('Platform') + '<div class="c">' + chk('target.platform', t.platform, PLATFORMS) + '</div></div>'
-    + '<div class="fi">' + L('Target Device') + '<div class="c">' + chk('target.device', t.device, DEVICE_MODES) + '</div></div>'
-    + '<div class="fi">' + L('Version Demand') + '<div class="c"><div class="row">'
+    + '<div class="fi">' + L('Platform', 1) + '<div class="c">' + chkMulti('target.platform', t.platform, PLATFORMS, ['all'])
+    + ((t.platform || []).includes('others')
+        ? '<div style="margin-top:4px">' + inp('target.platform_other', t.platform_other, { ph:'other platform' }) + '</div>' : '')
+    + '</div></div>'
+    + '<div class="fi">' + L('Device', 1) + '<div class="c">' + chkMulti('target.device', t.device, DEVICE_MODES, ['all']) + '</div></div>'
+    + '<div class="fi">' + L('OS Version Demand') + '<div class="c"><div class="row">'
     + '<span style="flex:1">' + inp('target.version_from', t.version_from, { ph:'Min version' }) + '</span><span class="gray">~</span>'
     + '<span style="flex:1">' + inp('target.version_to', t.version_to, { ph:'Max version' }) + '</span>'
     + '</div></div></div>'
     + '</div>'
     /* 快捷勾选：作为一个字段名放在国家标签前面 */
-    + '<div class="fi">' + L('Quick Select') + '<div class="c wide"><div class="row">'
+    + '<div class="fi">' + L('Country Quick Select') + '<div class="c wide"><div class="row">'
     + TOP_GEOS.map((c) => '<span class="tag sel' + (t.countries.includes(c) ? ' pick' : '') + '"'
-        + ' onclick="toggleCountry(\'' + c + '\',' + (t.countries.includes(c) ? 'false' : 'true') + ')">'
+        + ' onclick="pickCountry(\'' + c + '\',' + (t.countries.includes(c) ? 'false' : 'true') + ')">'
         + c + '</span>').join('')
     + '</div></div></div>'
     + '<div style="margin-top:6px">' + geoSelector()
     + (iss.length ? '<div style="margin-top:8px">' + iss.map((x) => '<div class="tip ' + (x.level === 'err' ? 'err' : 'warn') + '">' + esc(x.msg) + '</div>').join('') + '</div>' : '')
     + '</div>';
   return h + '</div></div>';
-}
-/* 明确告诉用户这次加载了多少字典、省了多少，把「为什么变快」讲清楚 */
-function dictLoadNote() {
-  const t = form.target;
-  let states = 0, cityTotal = 0;
-  t.countries.forEach((c) => regionsOf(c).forEach((r) => { states++; cityTotal += r.total; }));
-  if (!t.need_region) return '<div class="tip">Region targeting off: neither region nor city dictionary is loaded, '
-    + 'this offer covers ' + states + ' regions / ~' + cityTotal.toLocaleString() + 'city rows skipped.</div>';
-  if (!t.need_city) return '<div class="tip">Only the region dictionary is loaded (' + states + ' regions), the city dictionary of ~'
-    + cityTotal.toLocaleString() + 'is skipped.</div>';
-  return '<div class="tip warn">Full region + city dictionary loaded (' + states + ' regions / ~'
-    + cityTotal.toLocaleString() + ' cities).</div>';
 }
 function showGeoJSON() {
   const rj = buildRegionJSON(), cj = buildCityJSON();
@@ -1808,8 +1825,8 @@ function navBadge(k) {
   const e = secErrors(k).length, w = secWarns(k).length;
   if (e) return { t: e + ' required missing', cls:'err' };
   if (w) return { t: w + ' warnings', cls:'warn' };
-  if (k === 'target') { const g = geoTotals(); return { t: (form.target.global ? 'Global / ' : '') + g.countries + ' countries / '
-    + (form.target.need_region ? g.states + ' regions / ' + g.cities + ' cities' : 'country level only'), cls:'ok' }; }
+  if (k === 'target') { const g = geoTotals();
+    return { t: g.countries + ' countries / ' + g.states + ' regions / ' + g.cities + ' cities', cls:'ok' }; }
   if (k === 'creative') return { t: form.creative.pictures.length + ' pictures / ' + form.creative.videos.length + ' videos', cls:'ok' };
   if (k === 'tracking') return { t:'Passed', cls:'ok' };
   return { t:'Completed', cls:'ok' };
@@ -1864,8 +1881,8 @@ function doCreate() {
     + kv('Link Type', esc(LINK_TYPES[o.link_type] || o.link_type))
     + kv('Payout', '$' + (o.price == null ? '—' : o.price) + ' <span class="gray">/ Adv $' + (o.advPrice == null ? '—' : o.advPrice) + '</span>')
     + kv('Channel Cap', o.cap == null ? 'no limit' : o.cap)
-    + kv('Targeting', (form.target.global ? 'Global' : o.countries.join(', ') || '—')
-        + (form.target.need_region ? ' <span class="gray">' + o.states + ' regions / ' + o.cities + ' cities</span>' : ''))
+    + kv('Targeting', (o.countries.join(', ') || '—')
+        + ' <span class="gray">' + o.states + ' regions / ' + o.cities + ' cities</span>')
     + '</div>'
     + (o.issues.length ? '<div style="margin-top:10px">' + o.issues.map((x) =>
         '<div class="tip ' + (x.level === 'err' ? 'err' : 'warn') + '">' + esc(x.msg) + '</div>').join('') + '</div>' : ''),
@@ -1885,7 +1902,23 @@ function doCreate() {
     });
 }
 
+/* 演示初始态：BR 整国全选；MX 全州加载后把 veracruz 改成只选 xalapa，触发同地点别名漏量提醒 */
+let geoMockDone = 0;
+function initGeoMock() {
+  if (geoMockDone) return;
+  geoMockDone = 1;
+  const t = form.target;
+  ['BR', 'MX'].forEach((c) => loadRegions(c));
+  const vc = regionsOf('MX').find((r) => r.name === 'veracruz');
+  if (vc) {
+    const xa = vc.cities.find((x) => x.name === 'xalapa');
+    t.region.MX[vc.rid] = xa ? [xa.id] : [];
+    t.loadedC['MX|' + vc.rid] = 1;
+    g3.country = 'MX'; g3.rid = vc.rid;
+  }
+}
 function render() {
+  initGeoMock();
   renderCtx();
   $('#main').innerHTML = cardAdv() + cardBasic() + cardSettle() + cardCap() + cardTarget()
     + cardTracking() + cardCreative() + cardIntegration();
