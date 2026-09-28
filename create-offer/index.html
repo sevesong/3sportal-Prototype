@@ -37,6 +37,7 @@ table.t{width:100%;border-collapse:collapse;font-size:13px}
 table.t th{background:#fafafa;padding:8px 10px;border:1px solid #ebeef5;text-align:left;font-weight:500;color:#606266}
 table.t td{padding:7px 10px;border:1px solid #ebeef5;vertical-align:middle}
 table.t tr.bad td{background:#fef6f6}
+table.t.sm{font-size:12px}table.t.sm th{padding:5px 7px}table.t.sm td{padding:4px 7px}
 table.t input,table.t select{padding:3px 7px;font-size:12px}
 
 .tag{display:inline-block;padding:1px 7px;border-radius:3px;font-size:11px;background:#ecf5ff;color:#409eff;border:1px solid #d9ecff;margin:1px 3px 1px 0;white-space:nowrap}
@@ -102,6 +103,7 @@ table.t input,table.t select{padding:3px 7px;font-size:12px}
 .capw{max-width:1000px;margin:0 auto}
 /* 表格内的富文本输入框 */
 .rt{min-height:26px;border:1px solid #dcdfe6;border-radius:4px;padding:3px 7px;font-size:12px;line-height:1.5;background:#fff}
+.rt:empty:before{content:attr(data-ph);color:#c0c4cc}
 .rt:focus{outline:0;border-color:#409eff}
 table.t td.ct,table.t th.ct{text-align:center}
 table.t td.brk{word-break:break-all}
@@ -176,12 +178,12 @@ const SECS = [
 ];
 
 const PLATFORMS = { android: 'Android', ios: 'iOS' };
-/* Offer Type 现网实际只用 direct，其余（Indirect API 等）是历史枚举，本版只留 direct */
-const OFFER_TYPES = { direct: 'Direct' };
+/* Offer Type：三选一，默认 direct */
+const OFFER_TYPES = { direct: 'Direct', indirect_manual: 'Indirect_manual', indirect_api: 'Indirect API' };
 /* 是否拉活：UA 拉新 / RT 拉活，仅报表维度 */
 const REACT_TYPES = { ua: 'UA', rt: 'RT' };
 const SETTLE_TYPES = { cpi: 'CPI', cpe: 'CPE', cps: 'CPS' };
-const CHN_SETTLE_TYPES = { cpi: 'CPI', cpe: 'CPE' };
+const CHN_SETTLE_TYPES = { cpi: 'CPI', cpe: 'CPE', cps: 'CPS' };
 /* 手绘稿：Target Device 为 phone / tablet / all */
 const DEVICE_MODES = { all: 'All', phone: 'Phone', tablet: 'Tablet' };
 const TRACK_WAYS = { s2s: 'S2S', sdk: 'SDK', pixel: 'Pixel' };
@@ -191,7 +193,7 @@ const TRACK_LINK_TYPES = { cta: 'CTA', vta: 'VTA', mix: 'Mix' };
 const MMPS = { appsflyer: 'AppsFlyer', adjust: 'Adjust', branch: 'Branch', singular: 'Singular', none: 'None / Self-attributed' };
 const TRACK_DOMAINS = ['track.mobvista.com', 'trk.mobvista.com', 'click.mobvista.com'];
 /* Adv Settlement Events 的两个枚举，取自现网 */
-const MATCH_TYPES = { uniq: 'uniq', multi: 'multi' };
+const MATCH_TYPES = { uniq: 'uniq match', multi: 'multi match' };
 const ATTR_WINDOWS = { lifetime: 'lifetime', '24h': '24 hours', '7d': '7 days', '14d': '14 days', '30d': '30 days' };
 const CATEGORIES = { game: 'Game', social: 'Social', tool: 'Tool', finance: 'Finance', ecom: 'E-Commerce', video: 'Video' };
 /* 素材标准尺寸，用于「auto」自动裁剪 */
@@ -295,6 +297,8 @@ const LINK_ERR = {
    ============================================================ */
 const form = {
   adv: { advertiser:'Neptune Games', related_campaign:'CAMP_2026_domino', related_invoice:'INV-2026-0918',
+    /* Related Invoice 改为表格展示，数据跟着 campaign 带出 */
+    invoices:[{ name:'US_DedicatedMedia-0', business:'US_DedicatedMedia-company -0', address:'US_DedicatedMedia-address -0' }],
     package_name:'com.neptune.domino',
     /* 折叠区：Package Info（对齐旧版 Promotion Info 的字段，PRD 要求默认收起） */
     app_name:'Domino Star', app_short:'domino', adv_short:'nep',
@@ -304,8 +308,9 @@ const form = {
     kids_centric:0, app_desc:'Classic domino battles', icon_url:'campaign_icon_512.png',
     /* Advertiser 上挂的归属人，Basic Info 的 PM / BD 从这里继承初值 */
     adv_pm:'yongqiang.song', adv_bd:'wang.lei' },
-  basic: { offer_id:'(generated after creation)', offer_name:'DOMINO STAR - AND - 13', offer_uuid:'', offer_type:'direct',
-    promote_start:'2026-09-20', promote_end:'2026-12-31', promote_now:0,
+  basic: { offer_id:'(generated after creation)', offer_name:'DOMINO STAR - AND - 13', offer_uuid:'domino_star_and_13', offer_type:'direct',
+    /* 投放期精确到时分秒；结束时间由系统按 offer stop 时间回填，页面只读 */
+    promote_start:'2026-09-20T10:00:00', promote_end:'2026-12-31T23:59:59',
     pm:'yongqiang.song', bd:'wang.lei', pm_touched:0,
     is_reactivation:'ua', channel_white_list:'chn_a1b2c3\nchn_d4e5f6' },
   /* 手绘稿：Adv Settlement / Channel Settlement 两块，各自带 event 表与 Note */
@@ -318,8 +323,10 @@ const form = {
     ],
     /* Channel Set：结算口径 + event 级 payout 表 */
     chn_settle_type:'cpi',
-    chn_events:[{ name:'install', payout:0.35, note:'' }] },
+    chn_events:[{ name:'install', adv_price:0.62, payout:0.35, note:'1.quality requirement: retention rate 20%<br>2.no bot, no fraud' }] },
   cap: { budget_type:'daily',
+    /* 页面不展示，建单时按默认值提交 */
+    hard_cap:0,
     adv_conv_cap:{ on:0, val:20000 },
     chn_conv_cap:{ on:0, val:18000 },
     chn_click_cap:{ on:1, val:null },
@@ -373,17 +380,71 @@ function pushLog(sec, msg) {
 /* 结算口径派生值。Upstream settles on Adv Settlement Type 取，下游按 Channel Settlement Type 取，
    两边各自可能落在 install 或某个 event 上，所以统一从这里读，避免各处口径不一致 */
 /* 对下游只有一个结算配置：Channel 侧固定一行，Event Name 由 Channel Set Type 决定，只允许填 payout 与对外 Note */
+/* Channel 表 Event Name 的默认值：CPI 取 install，CPE 取 Adv 表第二行，CPS 取第一行 */
 function chnEventName() {
   const s = form.settle;
   if (s.chn_settle_type === 'cpi') return 'install';
-  const e = s.adv_events.find((x) => x.name !== 'install') || s.adv_events[0] || {};
-  return e.name || 'install';
+  const opts = chnEventOpts();
+  const pref = s.chn_settle_type === 'cps' ? s.adv_events[0] : s.adv_events[1];
+  if (pref && opts.some((x) => x.name === pref.name)) return pref.name;
+  return (opts[0] || {}).name || 'install';
+}
+/* Adv 表的 Install 行由口径组合决定：该有就补到首行，不该有就摘掉；Channel 侧固定一行 */
+function syncSettle() {
+  const s = form.settle;
+  /* Adv=CPS 时下游不支持 CPI，Channel 停在 CPI 就落到 CPE */
+  if (s.adv_settle_type === 'cps' && s.chn_settle_type === 'cpi') s.chn_settle_type = 'cpe';
+  const idx = s.adv_events.findIndex((x) => x.name === 'install');
+  if (hasInstallRow()) {
+    if (idx < 0) s.adv_events.unshift({ name:'install', real:null, match:'uniq', window:'lifetime' });
+    else if (idx > 0) s.adv_events.unshift(s.adv_events.splice(idx, 1)[0]);
+  } else if (idx >= 0) {
+    s.adv_events.splice(idx, 1);
+  }
+  /* 除 install 外至少保留一行，否则 CPE / CPS 没有可结算的 event */
+  if (!onlyInstall() && !s.adv_events.some((x) => x.name !== 'install'))
+    s.adv_events.push({ name:'af_purchase', real:null, match:'uniq', window:'7d' });
+  syncChnEvents();
 }
 function syncChnEvents() {
   const s = form.settle, o = s.chn_events[0] || {};
-  s.chn_events = [{ name: chnEventName(), payout: o.payout == null ? null : o.payout, note: o.note || '' }];
+  const name = chnEventName();
+  const keep = o.name === name;
+  s.chn_events = [{ name: name,
+    adv_price: keep ? (o.adv_price == null ? null : o.adv_price) : (o.adv_price == null ? null : o.adv_price),
+    payout: o.payout == null ? null : o.payout, note: o.note || '' }];
 }
 /* 结算行：上游 / 下游各自按自己的口径认定哪一行参与结算 */
+/* Install 行是否存在：Adv=CPI 恒有；Adv=CPE 仅在 Channel=CPI 时有；Adv=CPS 没有 */
+const hasInstallRow = () => {
+  const s = form.settle;
+  return s.adv_settle_type === 'cpi' || (s.adv_settle_type === 'cpe' && s.chn_settle_type === 'cpi');
+};
+/* CPI/CPI 时 Adv 表只展示 install 一行，也不给增删入口 */
+const onlyInstall = () => form.settle.adv_settle_type === 'cpi' && form.settle.chn_settle_type === 'cpi';
+/* Adv 表实际渲染出来的行 */
+const advShownRows = () => {
+  const s = form.settle;
+  if (onlyInstall()) return s.adv_events.filter((x) => x.name === 'install');
+  return s.adv_events.filter((x) => x.name !== 'install' || hasInstallRow());
+};
+/* Adv Real Price 可填：CPI 只有 install 行可填，CPE 只有非 install 行可填，CPS 全可填 */
+const advPriceOn = (e) => {
+  const a = form.settle.adv_settle_type;
+  if (a === 'cpi') return e.name === 'install';
+  if (a === 'cpe') return e.name !== 'install';
+  return true;
+};
+/* Channel 表的 Adv Price / Channel Payout：上下游同口径且非 CPI 时展示 - 并置灰 */
+const chnPriceOn = () => {
+  const s = form.settle;
+  return !(s.adv_settle_type === s.chn_settle_type && s.chn_settle_type !== 'cpi');
+};
+/* Channel 表 Event Name 的候选：CPE 取除 install 外的 event，CPS 取全部 */
+const chnEventOpts = () => {
+  const s = form.settle;
+  return s.chn_settle_type === 'cps' ? s.adv_events.slice() : s.adv_events.filter((x) => x.name !== 'install');
+};
 const advPayIdx = () => {
   const s = form.settle;
   const i = s.adv_settle_type === 'cpi'
@@ -398,16 +459,6 @@ const advConvName = () => advRow().name || 'install';
 const chnConvName = () => chnRow().name || chnEventName();
 const advRealPrice = () => advRow().real;
 const chnPrice = () => chnRow().payout;
-/* 上下游结算口径的组合提醒：不在正文展示，进导航摘要与创建前确认 */
-function settleMix() {
-  const s = form.settle, a = s.adv_settle_type, c = s.chn_settle_type, out = [];
-  if (a === 'cpi' && c === 'cpe') out.push('Upstream settles on install while downstream settles on ' + chnConvName() + ': the cost of event volume cannot be billed to the advertiser, confirm this is intended');
-  if (a === 'cpe' && c === 'cpi') out.push('Upstream settles on ' + advConvName() + ' while downstream settles on install: swings in the install → event rate eat into margin directly');
-  if (a === 'cpe' && c === 'cpe' && advConvName() !== chnConvName())
-    out.push('Upstream and downstream settle on different events (' + advConvName() + ' vs ' + chnConvName() + '); margin needs manual review');
-  if (a === 'cps') out.push('Upstream is CPS revenue share: margin moves with order value, so a fixed payout needs manual review');
-  return out;
-}
 /* OPEN = 不设上限：开着时该 cap 不生效（无数值）；关掉才是限制模式，取输入的数值 */
 const capVal = (o) => (o && !o.on) ? o.val : null;
 /* 打开 OPEN 即清空数值并锁定输入框 */
@@ -453,7 +504,7 @@ function inp(path, v, opt) {
   opt = opt || {};
   const t = opt.type || 'text';
   const num = t === 'number';
-  return '<input type="' + t + '" ' + (opt.style ? 'style="' + opt.style + '" ' : '')
+  return '<input type="' + t + '" ' + (opt.step ? 'step="' + opt.step + '" ' : '') + (opt.style ? 'style="' + opt.style + '" ' : '')
     + (opt.cls ? 'class="' + opt.cls + '" ' : '') + (opt.ph ? 'placeholder="' + esc(opt.ph) + '" ' : '')
     + (opt.dis ? 'disabled ' : '')
     + 'value="' + esc(v == null ? '' : v) + '" oninput="setv(\'' + path + '\',' + (num ? 'this.value===\'\'?null:+this.value' : 'this.value') + ');' + (opt.norender ? '' : 'render()') + '">';
@@ -548,13 +599,18 @@ function syncName() {
   pushLog('Basic Info', 'Offer Name derived from Offer UUID: ' + b.offer_name);
   render();
 }
-function useNext(field) {
-  const b = form.basic;
-  const nx = field === 'name' ? nextFree(b.offer_name, EXIST_NAMES) : nextFree(b.offer_uuid, EXIST_UUIDS);
-  if (!nx) return toast('has no trailing number to increment; rename manually', 'warn');
-  if (field === 'name') { b.offer_name = nx; b.offer_uuid = nameToUuid(nx); }
-  else b.offer_uuid = nx;
-  toast('Switched to ' + nx);
+/* now：把当前时间写进开始时间，精确到秒 */
+function promoteNow() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  form.basic.promote_start = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
+    + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  render();
+}
+/* 粘贴进来的 channel uuid 可能用英文逗号或空格分隔，失焦时统一拆成一行一个 */
+function splitChannels() {
+  const v = form.basic.channel_white_list || '';
+  form.basic.channel_white_list = v.split(/[,\s]+/).filter((x) => x).join('\n');
   render();
 }
 
@@ -1113,16 +1169,14 @@ function buildOffer() {
   const ar = advRealPrice(), cp = chnPrice();
   const advCap = capVal(c.adv_conv_cap), chnCap = capVal(c.chn_conv_cap);
   const issues = validateLink(url, 'click');
-  if (!(cp > 0)) issues.push({ level:'err', msg:'Channel payout is empty or not greater than 0' });
-  if (ar > 0 && cp > 0 && cp >= ar) issues.push({ level:'err', msg:'Channel payout is not lower than the Adv price; margin is negative' });
+  if (chnPriceOn() && !(cp > 0)) issues.push({ level:'err', msg:'Channel payout is empty or not greater than 0' });
   if (uuidDup(b.offer_uuid)) issues.push({ level:'err', msg:'Offer UUID ' + b.offer_uuid + ' already exists' });
   if (nameDup(b.offer_name)) issues.push({ level:'err', msg:'Offer Name ' + b.offer_name + ' already exists' });
   if (chnCap != null && advCap != null && +chnCap > +advCap)
     issues.push({ level:'warn', msg:'Channel Cap is higher than Adv Cap; the excess cannot be billed to the advertiser' });
-  settleMix().forEach((m) => issues.push({ level:'warn', msg:m }));
   if (t.countries.length > 1) issues.push({ level:'warn', msg:'Package pass-through needs a single Target Geo, so it is unavailable for multi-geo offers' });
   if (lk === 'deeplink' && b.is_reactivation !== 'rt')
-    issues.push({ level:'warn', msg:'Link Type = Deeplink is usually used with retargeting, but Retargeting is set to UA' });
+    issues.push({ level:'warn', msg:'Link Type = Deeplink is usually used with retargeting, but Budget type is set to UA' });
   return { name:b.offer_name, uuid:b.offer_uuid, countries:t.countries.slice(), link_type:lk,
     advPrice:ar, price:cp, advCap:advCap, cap:chnCap,
     url:url, region:region, city:city, states:states, cities:cities, issues:issues };
@@ -1133,8 +1187,9 @@ const errCount = (o) => o.issues.filter((i) => i.level === 'err').length;
 function secErrors(k) {
   const e = [];
   if (k === 'adv') {
+    if (!form.adv.related_campaign) e.push('Related Campaign is required');
+    if (!(form.adv.invoices || []).length) e.push('Related Invoice is required');
     if (!form.adv.advertiser) e.push('Advertiser is required');
-    if (!form.adv.package_name) e.push('Package Name is required');
   }
   if (k === 'basic') {
     if (!form.basic.offer_name) e.push('Offer Name is required');
@@ -1142,22 +1197,26 @@ function secErrors(k) {
     if (nameDup(form.basic.offer_name)) e.push('Offer Name already exists');
     if (uuidDup(form.basic.offer_uuid)) e.push('Offer UUID already exists');
     if (!form.basic.pm) e.push('PM is required');
+    if (!form.basic.bd) e.push('BD is required');
   }
   if (k === 'settle') {
-    const ar = advRealPrice(), cp = chnPrice();
-    if (!(ar > 0)) e.push('Adv Real Price is required (the price of the settling row in the Adv table)');
-    if (!(cp > 0)) e.push('Channel Payout is required');
-    if (ar > 0 && cp > 0 && cp >= ar) e.push('Channel Payout is not lower than Adv Real Price; margin is negative');
-    form.settle.adv_events.forEach((x) => { if (!x.name) e.push('Event Name in the Set Info table cannot be empty'); });
-    if (!form.settle.adv_events.length) e.push('Set Info needs at least one event');
-    if (form.settle.adv_settle_type !== 'cpi' && !form.settle.adv_events.some((x) => x.name !== 'install'))
-      e.push('Adv Set Type = ' + SETTLE_TYPES[form.settle.adv_settle_type] + ' requires an event other than install in the Set Info table');
-    if (form.settle.chn_settle_type === 'cpe' && !form.settle.chn_events.some((x) => x.name !== 'install'))
-      e.push('Channel Set Type = CPE requires an event other than install in the Set Info table');
+    const st = form.settle;
+    advShownRows().forEach((x) => {
+      if (!x.name) e.push('Event Name in the Set Info table cannot be empty');
+      if (advPriceOn(x) && !(x.real > 0))
+        e.push((st.adv_settle_type === 'cps' ? 'Settlement Rate' : 'Adv Real Price') + ' is required for ' + (x.name || 'the event'));
+    });
+    if (!advShownRows().length) e.push('Set Info needs at least one event');
+    const ce = st.chn_events[0] || {};
+    if (chnPriceOn() && !(ce.adv_price > 0)) e.push('Adv Price is required');
+    if (chnPriceOn() && !(chnPrice() > 0)) e.push('Channel Payout is required');
+    if (!String(ce.note || '').replace(/<[^>]*>/g, '').trim()) e.push('Note (External) is required');
   }
   if (k === 'cap') {
+    const st = form.settle, showAdvCap = st.adv_settle_type === 'cpi' && st.chn_settle_type === 'cpe';
+    if (showAdvCap && !form.cap.adv_conv_cap.on && !(form.cap.adv_conv_cap.val > 0)) e.push('Adv Conversion Cap value required when OPEN is off');
     if (!form.cap.chn_conv_cap.on && !(form.cap.chn_conv_cap.val > 0)) e.push('Channel Conversion Cap value required when OPEN is off');
-    if (!form.cap.chn_click_cap.on && !(form.cap.chn_click_cap.val > 0)) e.push('Channel Click Cap value required when OPEN is off');
+    if (!form.cap.chn_click_cap.on && !(form.cap.chn_click_cap.val > 0)) e.push('Click Cap value required when OPEN is off');
   }
   if (k === 'target') geoIssues().filter((x) => x.level === 'err').forEach((x) => e.push(x.msg));
   if (k === 'creative') {
@@ -1170,7 +1229,6 @@ function secErrors(k) {
   return e;
 }
 function secWarns(k) {
-  if (k === 'settle') return settleMix();
   if (k === 'target') return geoIssues().filter((x) => x.level === 'warn').map((x) => x.msg);
   if (k === 'tracking') return validateLink(form.tracking.tracking_link, 'click').filter((x) => x.level === 'warn').map((x) => x.msg);
   return [];
@@ -1193,116 +1251,128 @@ const L = (t, rq) => '<label>' + (rq ? '<span class="rq">*</span>' : '') + t + '
 function cardAdv() {
   const a = form.adv;
   let h = cardHead('adv', 'Adv & Package & Campaign Info', 'Campaign + Package info merged; only four primary fields are shown by default');
-  /* 左列：Advertiser → Package Name（包跟着广告主）；右列：Related Campaign → Related Invoice（单据跟着 campaign） */
+  /* 左列：Related Campaign → Related Invoice → 展开入口；右列：Advertiser → Package Name → App Name
+     campaign 是这个模块的入口，选中后右列三个字段与单据一起带出，所以右列都是只读展示 */
+  const ro = (v, mono) => v ? '<span class="' + (mono ? 'mono ' : '') + 'small">' + esc(v) + '</span>'
+    : '<span class="small gray">loaded from the campaign</span>';
   h += '<div class="g2">'
-    + '<div class="fi">' + L('Advertiser', 1) + '<div class="c">' + inp('adv.advertiser', a.advertiser) + '</div></div>'
-    + '<div class="fi">' + L('Related Campaign') + '<div class="c">' + inp('adv.related_campaign', a.related_campaign) + '</div></div>'
-    + '<div class="fi">' + L('Package Name', 1) + '<div class="c">' + inp('adv.package_name', a.package_name, { cls:'mono' }) + '</div></div>'
-    + '<div class="fi">' + L('Related Invoice') + '<div class="c">' + inp('adv.related_invoice', a.related_invoice) + '</div></div>'
+    + '<div class="fi">' + L('Related Campaign', 1) + '<div class="c"><div class="row">'
+    + '<span style="flex:1"><input type="text" placeholder="search campaign name or id" value="' + esc(a.related_campaign == null ? '' : a.related_campaign)
+    + '" oninput="setv(\'adv.related_campaign\',this.value);loadCampaign()"></span>'
+    + '<button class="btn sm" onclick="addCampaign()">Add Campaign</button>'
+    + '</div></div></div>'
+    + '<div class="fi">' + L('Advertiser', 1) + '<div class="c"><div class="row">'
+    + '<span style="flex:1">' + inp('adv.advertiser', a.advertiser, { ph:'search username' }) + '</span>'
+    + '<button class="btn sm" onclick="addAdvertiser()">Add Advertiser</button>'
+    + '</div></div></div>'
+    + '<div class="fi">' + L('Related Invoice', 1) + '<div class="c wide">' + invoiceTable()
+    /* 展开入口紧跟 Related Invoice，点开后详情接在整块信息下面 */
+    + '<div style="margin-top:8px"><button class="btn sm" onclick="openPkg=!openPkg;render()">'
+    + (openPkg ? 'Hide Package Details ▴' : 'Show Package Details ▾') + '</button></div>'
+    + '</div></div>'
+    + '<div>'
+    + '<div class="fi">' + L('Package Name') + '<div class="c">' + ro(a.package_name, 1) + '</div></div>'
+    + '<div class="fi">' + L('App Name') + '<div class="c">' + ro(a.app_name) + '</div></div>'
     + '</div>'
-    /* 展开入口放在这块信息最下方，点开后详情直接接在下面，不再单独包一个 Package Info 模块 */
-    + '<div class="row" style="margin-top:6px;padding-top:10px;border-top:1px dashed #ebeef5">'
-    + '<button class="btn sm" onclick="openPkg=!openPkg;render()">'
-    + (openPkg ? 'Hide Package Details ▴' : 'Show Package Details ▾') + '</button>'
     + '</div>';
   if (openPkg) {
+    /* 展开区字段全部跟着 campaign 带出，交互沿用旧页面；App Description 单独一行，其余一行两个 */
     h += '<div style="margin-top:12px">'
       + '<div class="fi">' + L('Preview Link') + '<div class="c wide"><div class="row">'
       + '<span style="flex:1">' + inp('adv.preview_link', a.preview_link) + '</span>'
       + '<button class="btn sm" onclick="toast(\'Prototype only: open the store page in a new tab\')">Preview</button>'
-      + '<button class="btn sm" onclick="fetchStore()">Load</button>'
-      + ii('Paste an App Store / Google Play link and press Load to pull the package, app name and icon') + '</div></div></div>'
-      + '<div class="g2">'
-      + '<div class="fi">' + L('App Name') + '<div class="c">' + inp('adv.app_name', a.app_name) + '</div></div>'
-      + '<div class="fi">' + L('App Short Name') + '<div class="c">' + inp('adv.app_short', a.app_short) + '</div></div>'
-      + '<div class="fi">' + L('Advertiser Short Name') + '<div class="c">' + inp('adv.adv_short', a.adv_short)
-      + ii('Short names are used by the offer naming template') + '</div></div>'
-      + '<div class="fi">' + L('App Store ID') + '<div class="c">' + inp('adv.app_id', a.app_id, { cls:'mono', ph:'required for iOS, e.g. 554782625' }) + '</div></div>'
-      + '<div class="fi">' + L('Product Category') + '<div class="c">' + chk('adv.category', a.category, CATEGORIES) + '</div></div>'
-      + '<div class="fi">' + L('App Size (MB)') + '<div class="c">' + inp('adv.app_size', a.app_size) + '</div></div>'
-      + '<div class="fi">' + L('Min OS') + '<div class="c">' + inp('adv.min_os', a.min_os) + '</div></div>'
-      + '<div class="fi">' + L('App Rate') + '<div class="c">' + inp('adv.app_rate', a.app_rate) + '</div></div>'
-      + '<div class="fi">' + L('Kids Centric') + '<div class="c">' + chkBool('adv.kids_centric', a.kids_centric) + '</div></div>'
-      + '<div class="fi">' + L('Campaign Icon') + '<div class="c">'
-      + (a.icon_url ? '<span class="tag gray mono">' + esc(a.icon_url) + '</span>' : '<span class="small gray">not uploaded</span>')
-      + ii('This icon can be loaded as a creative in Creative Info') + '</div></div>'
-      + '</div>'
-      + '<div class="fi">' + L('App Description') + '<div class="c">'
-      + '<textarea rows="2" oninput="setv(\'adv.app_desc\',this.value)">' + esc(a.app_desc) + '</textarea></div></div>'
-      + '<div class="fi">' + L('Deprecated Fields') + '<div class="c wide"><div class="row">'
-      + ['gid/IDFA needs','IMEI needs','MAC needs','Server side click','Click-base attribution','View-base attribution',
-         'VTA Connecting','Bind List','Server Side Click File','Recommended','Advertiser Match Way','Offer Budget',
-         'Discount(%)','Traffic Network','Excluded Traffic','Advanced Targeting']
-        .map((x) => '<span class="tag gray">' + x + '</span>').join('')
       + '</div></div></div>'
+      + '<div class="g2">'
+      + '<div class="fi">' + L('Kids Centric') + '<div class="c">' + chkBool('adv.kids_centric', a.kids_centric) + '</div></div>'
+      + '<div class="fi">' + L('Icon') + '<div class="c">'
+      + (a.icon_url ? '<span class="tag gray mono">' + esc(a.icon_url) + '</span>' : '<span class="small gray">not uploaded</span>')
+      + '</div></div>'
+      + '<div class="fi">' + L('App Size') + '<div class="c">' + inp('adv.app_size', a.app_size, { ph:'MB' }) + '</div></div>'
+      + '<div class="fi">' + L('Product Category') + '<div class="c">' + chk('adv.category', a.category, CATEGORIES) + '</div></div>'
+      + '<div class="fi">' + L('Version') + '<div class="c">' + inp('adv.min_os', a.min_os) + '</div></div>'
+      + '<div class="fi">' + L('App Rate') + '<div class="c">' + inp('adv.app_rate', a.app_rate) + '</div></div>'
+      + '</div>'
+      + '<div class="fi">' + L('App Description') + '<div class="c wide">'
+      + '<textarea rows="2" oninput="setv(\'adv.app_desc\',this.value)">' + esc(a.app_desc) + '</textarea></div></div>'
       + '</div>';
   }
   return h + '</div></div>';
 }
-function fetchStore() {
-  const u = form.adv.preview_link || form.adv.store_url || '';
-  const m = u.match(/[?&]id=([\w.]+)/) || u.match(/\/id(\d+)/);
-  if (!m) return toast('This does not look like a store link; fill the package name and app name manually', 'warn');
-  if (/play\.google/.test(u)) { form.target.platform = 'android'; form.adv.package_name = m[1]; }
-  else { form.target.platform = 'ios'; form.adv.app_id = m[1]; }
-  form.adv.icon_url = 'campaign_icon_512.png';
-  toast('App info and icon fetched (prototype only; the real build calls the store API)'); render();
+/* Related Invoice：表格展示 campaign 已选中的单据，去掉旧页面的 Choose 列 */
+function invoiceTable() {
+  const list = form.adv.invoices || [];
+  if (!list.length) return '<span class="small gray">loaded from the campaign</span>';
+  return '<table class="t sm"><thead><tr><th class="ct">InvoiceName</th>'
+    + '<th class="ct">Name of business</th><th class="ct">Address</th></tr></thead><tbody>'
+    + list.map((x) => '<tr><td class="ct small">' + esc(x.name) + '</td>'
+      + '<td class="ct small">' + esc(x.business) + '</td>'
+      + '<td class="ct small">' + esc(x.address) + '</td></tr>').join('')
+    + '</tbody></table>';
 }
+/* 联想选中 campaign 后，本模块其余字段与单据一起带出，不用再手工填 */
+function loadCampaign() {
+  const a = form.adv;
+  if (!a.related_campaign) { a.invoices = []; a.package_name = ''; a.app_name = ''; return render(); }
+  a.advertiser = a.advertiser || 'Neptune Games';
+  a.package_name = 'com.neptune.domino';
+  a.app_name = 'Domino Star';
+  a.invoices = [{ name:'US_DedicatedMedia-0', business:'US_DedicatedMedia-company -0', address:'US_DedicatedMedia-address -0' }];
+  a.preview_link = a.preview_link || 'https://play.google.com/store/apps/details?id=com.neptune.domino';
+  a.icon_url = 'campaign_icon_512.png';
+  toast('Advertiser / package / invoice loaded from the campaign'); render();
+}
+function addCampaign() { toast('Prototype only: Add Campaign opens in a new tab'); }
+function addAdvertiser() { toast('Prototype only: Add Advertiser opens in a new tab'); }
 
 /* ---------- 2. Basic Info ---------- */
 function cardBasic() {
   const b = form.basic, a = form.adv;
   const nDup = nameDup(b.offer_name), uDup = uuidDup(b.offer_uuid);
-  const expect = nameToUuid(b.offer_name);
-  const drift = b.offer_name && b.offer_uuid && expect !== b.offer_uuid;
   let h = cardHead('basic', 'Basic Info', 'Basic info + operation info merged; PM / BD inherit from the advertiser',
     '<span class="tag gray mono">Offer ID ' + (b.offer_id ? esc(b.offer_id) : 'generated after creation') + '</span>');
 
   /* Offer Name 与 Offer UUID 各自一个字段，两列并排 */
   h += '<div class="g2">'
     + '<div class="fi">' + L('Offer Name', 1) + '<div class="c">'
-    + inp('basic.offer_name', b.offer_name, { ph:'e.g. DOMINO STAR - AND - 13' })
+    + inp('basic.offer_name', b.offer_name, { ph:'按需求命名，一般大写英文' })
     + ii('Globally unique, usually uppercase; differs from Offer UUID only in case and separators')
-    + (nDup ? '<div class="tip err">Offer Name already exists'
-        + (nextFree(b.offer_name, EXIST_NAMES) ? ' <a onclick="useNext(\'name\')">use ' + esc(nextFree(b.offer_name, EXIST_NAMES)) + '</a>' : '') + '</div>' : '')
+    + (nDup ? '<div class="tip err">Offer Name already exists</div>' : '')
     + '</div></div>'
     + '<div class="fi">' + L('Offer UUID', 1) + '<div class="c">'
-    + inp('basic.offer_uuid', b.offer_uuid, { cls:'mono', ph:'lowercase + underscore, e.g. domino_star_and_13' })
+    + inp('basic.offer_uuid', b.offer_uuid, { cls:'mono', ph:'offer唯一标识，按需求命名，一般小写英文' })
     + ii('Globally unique identifier used to look up the offer')
-    + (uDup ? '<div class="tip err">Offer UUID already exists'
-        + (nextFree(b.offer_uuid, EXIST_UUIDS) ? ' <a onclick="useNext(\'uuid\')">use ' + esc(nextFree(b.offer_uuid, EXIST_UUIDS)) + '</a>' : '') + '</div>'
-      : drift ? '<div class="tip warn">Differs from the value mapped from Offer Name (' + esc(expect) + '); confirm this is intended</div>' : '')
+    + (uDup ? '<div class="tip err">Offer UUID already exists</div>' : '')
     + '</div></div>'
     + '</div>'
 
     /* 口径类字段一行两个：是否拉活的字段名与上一行的 Offer UUID 同一起点 */
     + '<div class="g2">'
-    + '<div class="fi">' + L('Offer Type') + '<div class="c">' + chk('basic.offer_type', b.offer_type, OFFER_TYPES)
-    + ii('Only the type in use (direct) is shown; legacy types stay hidden') + '</div></div>'
-    + '<div class="fi">' + L('Retargeting') + '<div class="c">' + chk('basic.is_reactivation', b.is_reactivation, REACT_TYPES)
-    + ii('Reporting dimension only; RT offers on AF links need is_retargeting=true') + '</div></div>'
+    + '<div class="fi">' + L('Offer Type', 1) + '<div class="c">' + chk('basic.offer_type', b.offer_type, OFFER_TYPES)
+    + ii('Direct / Indirect_manual / Indirect API') + '</div></div>'
+    + '<div class="fi">' + L('Budget type', 1) + '<div class="c">' + chk('basic.is_reactivation', b.is_reactivation, REACT_TYPES)
+    + ii('UA 拉新 / RT 拉活；RT offer 的 AF 链接需带 is_retargeting=true') + '</div></div>'
     + '</div>'
 
-    /* 投放期单独一行：两个日期 + now 开关放一起才不会被挤换行 */
-    /* now 直接做成第一个日期选择框旁边的按钮，不再单独占一个字段 */
+    /* 投放期单独一行：now 按钮把当前时间写进开始时间；结束时间由系统按 offer stop 时间回填，页面只读 */
     + '<div class="fi">' + L('Promote Periods') + '<div class="c wide"><div class="row">'
-    + '<button class="btn sm' + (b.promote_now ? ' pri' : '') + '" onclick="setv(\'basic.promote_now\',' + (b.promote_now ? 0 : 1) + ');render()">now</button>'
-    + (b.promote_now ? '<span class="tag gray">starts right after creation</span>'
-      : '<span style="width:170px">' + inp('basic.promote_start', b.promote_start, { type:'date' }) + '</span><span class="gray">→</span>'
-        + '<span style="width:170px">' + inp('basic.promote_end', b.promote_end, { type:'date' }) + '</span>')
+    + '<button class="btn sm" onclick="promoteNow()">now</button>'
+    + '<span style="width:210px">' + inp('basic.promote_start', b.promote_start, { type:'datetime-local', step:'1', style:'width:100%' }) + '</span>'
+    + '<span class="gray">→</span>'
+    + '<span style="width:210px">' + inp('basic.promote_end', b.promote_end, { type:'datetime-local', step:'1', style:'width:100%', dis:1 }) + '</span>'
     + '</div></div></div>'
 
     /* 归属人两列对齐 */
     + '<div class="g2">'
     + '<div class="fi">' + L('PM', 1) + '<div class="c"><div class="row"><span style="flex:1">' + inp('basic.pm', b.pm) + '</span>'
     + '</div></div></div>'
-    + '<div class="fi">' + L('BD') + '<div class="c"><div class="row"><span style="flex:1">' + inp('basic.bd', b.bd) + '</span>'
+    + '<div class="fi">' + L('BD', 1) + '<div class="c"><div class="row"><span style="flex:1">' + inp('basic.bd', b.bd) + '</span>'
     + '</div></div></div>'
     + '</div>'
     + (b.is_reactivation === 'rt' && !/is_retargeting=true/.test(form.tracking.tracking_link)
-      ? '<div class="tip warn">Retargeting = RT but the Tracking Link has no is_retargeting=true, so reporting will not match the actual run</div>' : '')
+      ? '<div class="tip warn">Budget type = RT but the Tracking Link has no is_retargeting=true, so reporting will not match the actual run</div>' : '')
     + '<div class="fi">' + L('Channel White List') + '<div class="c">'
-    + '<textarea rows="3" class="mono" placeholder="one channel uuid per line" oninput="setv(\'basic.channel_white_list\',this.value)">' + esc(b.channel_white_list) + '</textarea>'
+    + '<textarea rows="3" class="mono" placeholder="支持识别粘贴英文逗号/空格分割的channel uuid"'
+    + ' oninput="setv(\'basic.channel_white_list\',this.value)" onchange="splitChannels()">' + esc(b.channel_white_list) + '</textarea>'
     + '<div class="tip">' + rows(b.channel_white_list).length + ' channels</div></div></div>';
   return h + '</div></div>';
 }
@@ -1313,43 +1383,89 @@ function cardBasic() {
    结算行（参与算钱的那一行）由各自的口径决定，非结算行的价格 / payout 置灰只读。 */
 function cardSettle() {
   const s = form.settle;
-  syncChnEvents();
-  const ai = advPayIdx();
+  syncSettle();
+  const a = s.adv_settle_type, c = s.chn_settle_type;
+  const dash = '<span class="gray">-</span>';
+  const numPh = '支持小数点后三位';
   let h = cardHead('settle', 'Settlement Info',
     'Adv Set Type drives the upstream settlement basis, Channel Set Type the downstream one; both tables share one event list');
 
-  /* 上游口径 + Adv 侧价格表 */
-  h += '<div class="fi">' + L('Adv Set Type') + '<div class="c">' + chk('settle.adv_settle_type', s.adv_settle_type, SETTLE_TYPES) + '</div></div>'
-    + '<table class="t" style="margin-top:6px"><thead><tr><th style="width:210px">Event Name</th>'
-    + '<th class="ct" style="width:130px">Adv Real Price</th><th class="ct" style="width:130px">Adv Price</th>'
-    + '<th class="ct" style="width:150px">Match Type</th><th class="ct" style="width:150px">Attri Windows</th>'
-    + '<th class="ct" style="width:60px">Delete</th></tr></thead><tbody>'
-    + (s.adv_events.length ? s.adv_events.map((e, i) => {
-        const pay = i === ai;   /* 参与上游结算的行 */
-        return '<tr' + (pay ? ' style="background:#f4f9ff"' : '') + '>'
-        + '<td><input type="text" class="mono" value="' + esc(e.name) + '" oninput="renameEvent(' + i + ',this.value)"></td>'
-        + '<td><input type="number" step="0.01" ' + (pay ? '' : 'disabled ') + 'value="' + (e.real == null ? '' : e.real) + '" oninput="form.settle.adv_events[' + i + '].real=this.value===\'\'?null:+this.value;render()"></td>'
-        + '<td><input type="number" step="0.01" ' + (pay ? '' : 'disabled ') + 'value="' + (e.price == null ? '' : e.price) + '" oninput="form.settle.adv_events[' + i + '].price=this.value===\'\'?null:+this.value;render()"></td>'
-        + '<td><select onchange="form.settle.adv_events[' + i + '].match=this.value;render()">'
-        + Object.keys(MATCH_TYPES).map((k) => '<option value="' + k + '" ' + (e.match === k ? 'selected' : '') + '>' + MATCH_TYPES[k] + '</option>').join('') + '</select></td>'
-        + '<td><select onchange="form.settle.adv_events[' + i + '].window=this.value;render()">'
-        + Object.keys(ATTR_WINDOWS).map((k) => '<option value="' + k + '" ' + (e.window === k ? 'selected' : '') + '>' + ATTR_WINDOWS[k] + '</option>').join('') + '</select></td>'
-        + '<td class="ct"><a title="Delete this event" onclick="delSetRow(' + i + ')">🗑</a></td></tr>';
-      }).join('')
-      : '<tr><td colspan="6" class="gray small">No event</td></tr>')
-    + '</tbody></table>'
-    + '<div class="row" style="margin-top:8px"><button class="btn sm" onclick="addSetRow()">+ Add Event</button></div>';
+  /* 上游口径：Channel 选 CPS 时只能配 CPS */
+  h += '<div class="fi">' + L('Adv Set Type', 1) + '<div class="c">'
+    + chkLock('settle.adv_settle_type', a, SETTLE_TYPES, c === 'cps' ? ['cpi', 'cpe'] : []) + '</div></div>';
 
-  /* 下游口径 + Channel 侧 payout 表（行由上表驱动，不可增删） */
-  h += '<div class="fi" style="margin-top:14px">' + L('Channel Set Type') + '<div class="c">' + chk('settle.chn_settle_type', s.chn_settle_type, CHN_SETTLE_TYPES) + '</div></div>'
-    + '<table class="t" style="margin-top:6px"><thead><tr><th style="width:210px">Event Name</th>'
-    + '<th class="ct" style="width:150px">Channel Payout</th><th>Note (External)</th></tr></thead><tbody>'
+  /* Adv 侧 Set Info 表：CPS 时第二列是 Settlement Rate */
+  const showDel = !onlyInstall();
+  /* 非置灰（可编辑）的列都是必填，表头带 * */
+  const rq = '<span class="rq">*</span>';
+  const hasEvtRow = advShownRows().some((x) => x.name !== 'install');   /* 有非 install 行才有可编辑的名称与匹配规则 */
+  h += '<table class="t" style="margin-top:6px"><thead><tr><th style="width:210px">' + (hasEvtRow ? rq : '') + 'Event Name</th>'
+    + '<th class="ct" style="width:150px">' + rq + (a === 'cps' ? 'Settlement Rate' : 'Adv Real Price') + '</th>'
+    + '<th class="ct" style="width:150px">' + (hasEvtRow ? rq : '') + '3s Match Type</th>'
+    + '<th class="ct" style="width:150px">' + (hasEvtRow ? rq : '') + '3s Attri Windows</th>'
+    + (showDel ? '<th class="ct" style="width:60px">Delete</th>' : '') + '</tr></thead><tbody>'
+    + (advShownRows().length ? advShownRows().map((e) => {
+        const i = s.adv_events.indexOf(e);
+        const ins = e.name === 'install';
+        const priceOn = advPriceOn(e);
+        return '<tr' + (priceOn ? ' style="background:#f4f9ff"' : '') + '>'
+        /* Install 行固定首行、名称只读 */
+        + '<td>' + (ins ? '<span class="mono small gray">install</span>'
+            : '<input type="text" class="mono" value="' + esc(e.name) + '" oninput="renameEvent(' + i + ',this.value)">') + '</td>'
+        + '<td class="ct">' + (priceOn
+            ? '<input type="number" step="0.001" placeholder="' + numPh + '" value="' + (e.real == null ? '' : e.real) + '"'
+              + ' oninput="form.settle.adv_events[' + i + '].real=this.value===\'\'?null:+this.value;render()">'
+            : dash) + '</td>'
+        /* install 不需要事件匹配规则，两列恒为 - */
+        + '<td class="ct">' + (ins ? dash : '<select onchange="form.settle.adv_events[' + i + '].match=this.value;render()">'
+            + Object.keys(MATCH_TYPES).map((k) => '<option value="' + k + '" ' + (e.match === k ? 'selected' : '') + '>' + MATCH_TYPES[k] + '</option>').join('')
+            + '</select>') + '</td>'
+        + '<td class="ct">' + (ins ? dash : '<select onchange="form.settle.adv_events[' + i + '].window=this.value;render()">'
+            + Object.keys(ATTR_WINDOWS).map((k) => '<option value="' + k + '" ' + (e.window === k ? 'selected' : '') + '>' + ATTR_WINDOWS[k] + '</option>').join('')
+            + '</select>') + '</td>'
+        + (showDel ? '<td class="ct">' + (ins ? '<span class="gray">🗑</span>'
+            : '<a title="Delete this event" onclick="delSetRow(' + i + ')">🗑</a>') + '</td>' : '')
+        + '</tr>';
+      }).join('')
+      : '<tr><td colspan="' + (showDel ? 5 : 4) + '" class="gray small">No event</td></tr>')
+    + '</tbody></table>'
+    + (showDel ? '<div class="row" style="margin-top:8px"><button class="btn sm" onclick="addSetRow()">+ Add Event</button></div>' : '');
+
+  /* 下游口径：CPS 仅在上游也是 CPS 时可选 */
+  h += '<div class="fi" style="margin-top:14px">' + L('Channel Set Type', 1) + '<div class="c">'
+    + chkLock('settle.chn_settle_type', c, CHN_SETTLE_TYPES, [], a === 'cps' ? ['cpi'] : ['cps']) + '</div></div>';
+
+  /* Channel 侧 Set Info 表：固定一行，event 随上表联动 */
+  const payOn = chnPriceOn();
+  h += '<table class="t" style="margin-top:6px"><thead><tr><th style="width:210px">' + (c === 'cpi' ? '' : rq) + 'Event Name</th>'
+    + '<th class="ct" style="width:130px">' + (payOn ? rq : '') + 'Adv Price</th>'
+    + '<th class="ct" style="width:150px">' + (payOn ? rq : '') + 'Channel Payout</th>'
+    + '<th>' + rq + 'Note (External)</th></tr></thead><tbody>'
     + s.chn_events.map((e, i) => '<tr style="background:#f4f9ff">'
-        + '<td class="mono small">' + esc(e.name) + '</td>'
-        + '<td><input type="number" step="0.01" value="' + (e.payout == null ? '' : e.payout) + '" oninput="form.settle.chn_events[' + i + '].payout=this.value===\'\'?null:+this.value;render()"></td>'
-        + '<td><div class="rt" contenteditable="true" oninput="form.settle.chn_events[' + i + '].note=this.innerHTML">' + (e.note || '') + '</div></td></tr>').join('')
+        + '<td>' + (c === 'cpi' ? '<span class="mono small gray">install</span>'
+            : '<select onchange="form.settle.chn_events[' + i + '].name=this.value;render()">'
+              + chnEventOpts().map((x) => '<option value="' + esc(x.name) + '" ' + (e.name === x.name ? 'selected' : '') + '>' + esc(x.name) + '</option>').join('')
+              + '</select>') + '</td>'
+        + '<td class="ct">' + (payOn
+            ? '<input type="number" step="0.001" placeholder="' + numPh + '" value="' + (e.adv_price == null ? '' : e.adv_price) + '"'
+              + ' oninput="form.settle.chn_events[' + i + '].adv_price=this.value===\'\'?null:+this.value;render()">' : dash) + '</td>'
+        + '<td class="ct">' + (payOn
+            ? '<input type="number" step="0.001" placeholder="' + numPh + '" value="' + (e.payout == null ? '' : e.payout) + '"'
+              + ' oninput="form.settle.chn_events[' + i + '].payout=this.value===\'\'?null:+this.value;render()">' : dash) + '</td>'
+        + '<td><div class="rt" contenteditable="true" data-ph="Notes Example：1.quality requirement: retention rate 20%  2.no bot, no fraud"'
+        + ' oninput="form.settle.chn_events[' + i + '].note=this.innerHTML">' + (e.note || '') + '</div></td></tr>').join('')
     + '</tbody></table>';
   return h + '</div></div>';
+}
+/* 枚举复选框：lock 里的枚举置灰不可选，hide 里的枚举直接不展示（口径组合约束） */
+function chkLock(path, cur, map, lock, hide) {
+  lock = lock || []; hide = hide || [];
+  return '<div class="row">' + Object.keys(map).filter((k) => hide.indexOf(k) < 0).map((k) => {
+    const dis = lock.indexOf(k) >= 0;
+    return '<label class="chk' + (dis ? ' gray' : '') + '"><input type="checkbox" ' + (dis ? 'disabled ' : '')
+      + (String(cur) === k ? 'checked' : '') + (dis ? '' : ' onchange="setv(\'' + path + '\',\'' + k + '\');render()"')
+      + '>' + esc(map[k]) + '</label>';
+  }).join('') + '</div>';
 }
 /* event 改名：两张表同步，Channel 侧的 event 名不单独维护 */
 function renameEvent(i, v) {
@@ -1358,15 +1474,18 @@ function renameEvent(i, v) {
   render();
 }
 function addSetRow() {
-  form.settle.adv_events.push({ name:'af_new_event', real:null, price:null, match:'uniq', window:'7d' });
+  form.settle.adv_events.push({ name:'af_new_event', real:null, match:'uniq', window:'7d' });
   pushLog('Settlement Info', 'Set Info: event added');
   render();
 }
 function delSetRow(i) {
-  const e = form.settle.adv_events[i];
-  form.settle.adv_events.splice(i, 1);
-  form.settle.chn_events.splice(i, 1);
-  pushLog('Settlement Info', 'Set Info: event deleted — ' + (e && e.name || ''));
+  const s = form.settle, e = s.adv_events[i];
+  if (!e) return;
+  if (e.name === 'install') return toast('The install row cannot be deleted', 'warn');
+  if (s.adv_events.filter((x) => x.name !== 'install').length <= 1)
+    return toast('Keep at least one event besides install', 'warn');
+  s.adv_events.splice(i, 1);
+  pushLog('Settlement Info', 'Set Info: event deleted — ' + (e.name || ''));
   render();
 }
 
@@ -1375,27 +1494,29 @@ function cardCap() {
   const c = form.cap, st = form.settle;
   let h = cardHead('cap', 'Cap Info',
     'Each cap has its own OPEN switch; Conversion follows the event name configured on the settlement side');
-  /* OPEN 打开即锁定数值：开着不可编辑，要改先关掉开关 */
+  /* OPEN 打开即锁定数值：开着不可编辑，要改先关掉开关；Value 只收正整数 */
   const row = (path, o, name, conv, tag) =>
     '<tr class="' + (o.on ? '' : 'gray') + '"><td>' + name + (tag || '') + '</td>'
     + '<td class="ct">' + (conv ? '<span class="tag">' + esc(conv) + '</span>' : '<span class="gray">—</span>') + '</td>'
-    + '<td class="ct"><input type="number" ' + (o.on ? 'disabled ' : '') + 'value="' + (o.val == null ? '' : o.val) + '"'
-    + ' oninput="setv(\'' + path + '.val\',this.value===\'\'?null:+this.value);render()"></td>'
+    + '<td class="ct"><input type="number" step="1" min="1" ' + (o.on ? 'disabled ' : '') + 'value="' + (o.val == null ? '' : o.val) + '"'
+    + ' oninput="setv(\'' + path + '.val\',this.value===\'\'?null:Math.floor(Math.abs(+this.value)));render()"></td>'
     + '<td class="ct"><label class="chk" style="margin:0;justify-content:center">'
     + '<span class="sw' + (o.on ? ' on' : '') + '" onclick="capToggle(\'' + path + '\',' + (o.on ? 0 : 1) + ')"></span>OPEN</label></td></tr>';
-  /* Adv Conversion Cap 只在「Upstream settles on install 结算、下游不按 install 结算」时才有意义 */
-  const showAdvCap = st.adv_settle_type === 'cpi' && st.chn_settle_type !== 'cpi';
+  /* Adv Conversion Cap 只在上游按 install、下游按 event 结算时才有意义 */
+  const showAdvCap = st.adv_settle_type === 'cpi' && st.chn_settle_type === 'cpe';
+  /* OPEN 关掉的行 Value 必填，表头带 * */
+  const valRq = (showAdvCap && !c.adv_conv_cap.on) || !c.chn_conv_cap.on || !c.chn_click_cap.on;
   h += '<div class="capw">'
-    + '<div class="fi">' + L('Budget Type') + '<div class="c"><span class="tag gray">Daily Control</span></div></div>'
-    + '<table class="t"><thead><tr><th style="width:210px">Cap Item</th><th class="ct" style="width:150px">Conversion</th>'
-    + '<th class="ct" style="width:130px">Value</th><th class="ct" style="width:90px">Switch</th></tr></thead><tbody>'
+    + '<div class="fi">' + L('Cap Type') + '<div class="c"><span class="tag gray">Daily Control</span></div></div>'
+    + '<table class="t"><thead><tr><th style="width:210px">Cap</th><th class="ct" style="width:150px">Conversion</th>'
+    + '<th class="ct" style="width:130px">' + (valRq ? '<span class="rq">*</span>' : '') + 'Value</th>'
+    + '<th class="ct" style="width:90px">Open Cap</th></tr></thead><tbody>'
     + (showAdvCap ? row('cap.adv_conv_cap', c.adv_conv_cap, 'Adv Conversion Cap', advConvName(), '') : '')
     + row('cap.chn_conv_cap', c.chn_conv_cap, 'Channel Conversion Cap', chnConvName(), '')
-    + row('cap.chn_click_cap', c.chn_click_cap, 'Channel Click Cap', 'clicks', '')
+    + row('cap.chn_click_cap', c.chn_click_cap, 'Click Cap', 'clicks', '')
     + '</tbody></table>'
     + (showAdvCap && capVal(c.chn_conv_cap) != null && capVal(c.adv_conv_cap) != null && capVal(c.chn_conv_cap) > capVal(c.adv_conv_cap)
       ? '<div class="tip warn">Channel Cap is higher than Adv Cap; the excess cannot be billed to the advertiser</div>' : '')
-    + (capVal(c.chn_conv_cap) == null ? '<div class="tip warn">Channel Conversion Cap is set to no limit, so the offer will not auto-pause on volume</div>' : '')
     + '</div>';
   return h + '</div></div>';
 }
