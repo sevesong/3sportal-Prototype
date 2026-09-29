@@ -37,6 +37,7 @@ table.t{width:100%;border-collapse:collapse;font-size:13px}
 table.t th{background:#fafafa;padding:8px 10px;border:1px solid #ebeef5;text-align:left;font-weight:500;color:#606266}
 table.t td{padding:7px 10px;border:1px solid #ebeef5;vertical-align:middle}
 table.t tr.bad td{background:#fef6f6}
+table.t td.err{color:#f56c6c}
 table.t.sm{font-size:12px}table.t.sm th{padding:5px 7px}table.t.sm td{padding:4px 7px}
 table.t input,table.t select{padding:3px 7px;font-size:12px}
 
@@ -204,8 +205,6 @@ const MATCH_TYPES = { uniq: 'uniq match', multi: 'multi match' };
 const ATTR_WINDOWS = { lifetime: 'lifetime', '24h': '24 hours', '7d': '7 days', '14d': '14 days', '30d': '30 days' };
 const CATEGORIES = { game: 'Game', social: 'Social', tool: 'Tool', finance: 'Finance', ecom: 'E-Commerce', video: 'Video' };
 /* 素材标准尺寸，用于「auto」自动裁剪 */
-const STD_DIMS = ['1200x627', '1200x628', '640x640', '512x512', '300x250'];
-
 /* 系统内已存在的 offer name / uuid，用于重名校验与序号推荐（原型 mock 一批） */
 const EXIST_NAMES = ['Xanh SM - IOS - 55', 'Xanh SM - IOS - 54', 'Domino Star - AND - 11', 'Domino Star - AND - 12'];
 const EXIST_UUIDS = ['sm_xanh_ios_vn_dp', 'domino_star_and_11', 'domino_star_and_12', 'nep_domino_br_and_iaa'];
@@ -351,9 +350,11 @@ const form = {
     traffic_source: ['non-incent', 'no adult'],
     traffic_network: ['wifi', '2G', '3G', '4G'],
   },
-  creative: { pictures:[{ id:'p1', n:'1200x627_a.jpg', s:'1200x627', src:'manual upload' },
-                        { id:'p2', n:'raw_1080x540.jpg', s:'1080x540', src:'manual upload' }],
-    videos:[{ id:'v1', n:'720x1280_15s.mp4', s:'720x1280 / 15s', src:'manual upload' }] },
+  creative: { pictures:[
+      { id:'p1', n:'1200x627_a.jpg', s:'1200x627', fmt:'JPG', link:'https://cdn.mobvista.com/cr/p1_1200x627_a.jpg', desc:'主图 A', up:'2026-09-28 16:20' },
+      { id:'p2', n:'raw_1080x540.jpg', s:'1080x540', fmt:'JPG', link:'https://cdn.mobvista.com/cr/p2_raw_1080x540.jpg', desc:'', up:'2026-09-28 16:22' }],
+    videos:[
+      { id:'v1', n:'720x1280_15s.mp4', s:'720x1280', fmt:'MP4', link:'https://cdn.mobvista.com/cr/v1_720x1280_15s.mp4', desc:'竖版 15s', up:'2026-09-28 16:25' }] },
   tracking: { track_link_domain:'track.mobvista.com', adv_impression_link:'',
     /* 手绘稿新增：先贴上游渠道给的 Adv Link，再点 Generate 出我方 tracking link */
     adv_link:'https://app.appsflyer.com/com.neptune.domino?pid=mobvista_int&af_prt=Mobvista',
@@ -1159,6 +1160,35 @@ function classifyParam(k) {
   if ((r.optional || []).some((x) => x.k === k)) return 'optional';
   return 'custom';
 }
+/* 3.8.3 的逐行提醒：命中即在 Description 列红字展示，优先于参数含义 */
+function paramNote(x, p, i) {
+  const k = String(x.k || ''), v = String(x.v || '');
+  if (p.params.some((y, j) => j !== i && y.k === k)) return 'Tracking link 中存在重复参数';
+  if (/[\s\n]/.test(k) || /[\s\n]/.test(v)) return '存在换行符/空格';
+  if (/[A-Z]/.test(k)) return 'Link 中参数含英文大写字母，请检查';
+  const braces = (v.match(/\{/g) || []).length !== (v.match(/\}/g) || []).length
+    || (/\{/.test(v) && !/\{@[\s\S]*@\}/.test(v));
+  if (braces) return '占位符 {} 不完整';
+  if (/Math\.random/.test(v)) {
+    /* 随机表达式整段当一个值，只检查数组长度与下标是否对得上 */
+    const arr = (v.match(/\[([^\]]*)\]/) || [, ''])[1].split(',').filter((s) => s.trim()).length;
+    const n = +((v.match(/Math\.random\(\)\s*\*\s*(\d+)/) || [, 0])[1]);
+    return arr && n && arr !== n ? '随机函数有误，请检查' : '';
+  }
+  const m = v.match(/\{@[^}]*@\}/);
+  if (m && !MACRO_SET.has(m[0])) return '非系统支持的占位符或占位符有误';
+  /* 必传参数传值校验：设备 id 与 clickid 必须用对应的宏 */
+  if (k === 'clickid' && v && !/^\{@info\.(extend_)?clickid(\(\))?@\}$/.test(v))
+    return 'Tracking link 必传参数 clickid 传值有误，请检查';
+  if ((k === 'idfa' || k === 'advertising_id' || k === 'gps_adid') && v && !/query_idfa/.test(v))
+    return 'Tracking link 必传参数设备 id 传值有误，请检查';
+  return '';
+}
+function setHost(kind, v) {
+  const url = kind === 'view' ? form.tracking.adv_impression_link : form.tracking.tracking_link;
+  const p = parseLink(url); if (!p.ok) return;
+  p.host = v; setUrl(kind, buildLink(p));
+}
 function setUrl(kind, v) {
   if (kind === 'view') form.tracking.adv_impression_link = v; else form.tracking.tracking_link = v;
   render();
@@ -1170,7 +1200,10 @@ function setParam(kind, i, f, v) {
 }
 function delParam(kind, i) {
   const url = kind === 'view' ? form.tracking.adv_impression_link : form.tracking.tracking_link;
-  const p = parseLink(url); p.params.splice(i, 1); setUrl(kind, buildLink(p));
+  const p = parseLink(url); if (!p.params[i]) return;
+  /* 3.8.3：删除要二次确认，确认后同步删掉链接里对应的 Key&Value */
+  if (!confirm('是否删除参数 ' + (p.params[i].k || '(empty)') + ' ？')) return;
+  p.params.splice(i, 1); setUrl(kind, buildLink(p));
 }
 function addParam(kind) {
   const url = kind === 'view' ? form.tracking.adv_impression_link : form.tracking.tracking_link;
@@ -1602,60 +1635,60 @@ function pasteGeo() {
 }
 /* ---------- 7. Creative Info ---------- */
 function cardCreative() {
-  const c = form.creative;
-  const badPic = c.pictures.filter((x) => !STD_DIMS.includes(x.s)).length;
   let h = cardHead('creative', 'Creative Info',
-    'Size and filename checks relaxed; non-standard sizes can be auto-cropped',
-    '');
-
-  /* 左右两栏：左边 Picture Info，右边 Video Info */
-  h += '<div class="g2c">'
-    + '<div class="sec"><div class="sh">Picture Info'
-    + '<span class="row" style="gap:6px;font-weight:400">'
-    + (badPic ? '<button class="btn sm" onclick="autoFitAll()">Auto-crop All</button>' : '')
-    + '<button class="btn sm" onclick="addCr(\'pictures\')">+ Upload</button></span></div><div class="sb" style="padding:0">'
-    + '<table class="t"><thead><tr><th style="width:44px">ID</th><th>Name</th><th class="ct" style="width:104px">Dimension</th>'
-    + '<th class="ct" style="width:72px">Source</th><th class="ct" style="width:118px">Action</th></tr></thead><tbody>'
-    + (c.pictures.length ? c.pictures.map((x, i) => {
-        const std = STD_DIMS.includes(x.s);
-        return '<tr class="' + (std ? '' : 'bad') + '"><td class="mono small">' + esc(x.id) + '</td>'
-          + '<td class="mono small brk">' + esc(x.n) + '</td>'
-          + '<td class="ct"><span class="tag ' + (std ? 'g' : 'o') + '">' + esc(x.s) + '</span></td>'
-          + '<td class="small gray ct">' + esc(x.src) + '</td>'
-          + '<td class="ct" style="white-space:nowrap">'
-          + (std ? '' : '<button class="btn sm" onclick="autoFit(' + i + ')" title="Auto-crop to the closest standard size">auto</button> ')
-          + '<button class="btn lnk" onclick="form.creative.pictures.splice(' + i + ',1);render()">Remove</button></td></tr>';
-      }).join('') : '<tr><td colspan="5" class="gray small">Nothing uploaded</td></tr>')
-    + '</tbody></table></div>'
-    + '</div>';
-
-  h += '<div class="sec"><div class="sh">Video Info'
-    + '<button class="btn sm" onclick="addCr(\'videos\')">+ Upload</button></div><div class="sb">'
-    + (c.videos.length ? c.videos.map((x, i) => '<div class="row" style="margin-bottom:6px">'
-        + '<span class="tag gray mono">' + esc(x.n) + '</span><span class="small gray">' + esc(x.s) + '</span>'
-        + '<button class="btn lnk" onclick="form.creative.videos.splice(' + i + ',1);render()">Remove</button></div>').join('')
-      : '<div class="gray small">Nothing uploaded</div>')
-    + '</div></div>'
-    + '</div>';
+    'Size and filename checks relaxed; jump to the crop tool when needed', '');
+  /* 3.9.1 / 3.9.2：Picture 与 Video 用同一张八列表，各自全宽一行 */
+  h += crTable('pictures', 'Picture Info', 1);
+  h += crTable('videos', 'Video Info', 0);
   return h + '</div></div>';
 }
-/* auto：挑最接近的标准尺寸，按面积差最小取 */
-function autoFit(i) {
-  const p = form.creative.pictures[i];
-  const [w, hh] = String(p.s).split('x').map(Number);
-  let best = STD_DIMS[0], diff = Infinity;
-  STD_DIMS.forEach((d) => {
-    const [a, b] = d.split('x').map(Number);
-    const g = Math.abs(a / b - (w || 1) / (hh || 1));
-    if (g < diff) { diff = g; best = d; }
-  });
-  const from = p.s;
-  p.s = best; p.src = 'auto-cropped';
-  pushLog('Creative Info', 'Creative ' + p.n + ' auto-cropped ' + from + ' → ' + best);
-  toast(p.n + '：' + from + ' → ' + best); render();
+function crTable(kind, title, required) {
+  const rows = form.creative[kind], isPic = kind === 'pictures';
+  let h = '<div class="sec"><div class="sh">' + title + (required ? ' <span class="rq">*</span>' : '')
+    + '<span class="row" style="gap:6px;font-weight:400">'
+    + (isPic ? '<button class="btn sm" onclick="openCropTool()">Crop Picture</button>' : '')
+    + '<button class="btn sm" onclick="addCr(\'' + kind + '\')">+ Upload</button></span></div>'
+    + '<div class="sb" style="padding:0">'
+    + '<table class="t"><thead><tr><th style="width:44px">ID</th><th style="width:150px">Name</th>'
+    + '<th class="ct" style="width:90px">Size</th><th class="ct" style="width:64px">Format</th>'
+    + '<th>Creative Link</th><th style="width:160px">Description</th>'
+    + '<th class="ct" style="width:118px">Upload Time</th><th class="ct" style="width:74px">Action</th></tr></thead><tbody>'
+    + (rows.length ? rows.map((x, i) =>
+        '<tr><td class="mono small">' + esc(x.id) + '</td>'
+        + '<td class="mono small brk">' + esc(x.n) + '</td>'
+        + '<td class="ct"><span class="tag gray">' + esc(x.s) + '</span></td>'
+        + '<td class="ct small">' + esc(x.fmt) + '</td>'
+        + '<td class="mono small brk"><a onclick="toast(\'Prototype only: open the creative in a new tab\')">' + esc(x.link) + '</a></td>'
+        + '<td><input type="text" placeholder="optional note" value="' + esc(x.desc) + '"'
+        + ' onchange="setCr(\'' + kind + '\',' + i + ',this.value)"></td>'
+        + '<td class="ct small gray">' + esc(x.up) + '</td>'
+        + '<td class="ct"><button class="btn lnk" onclick="delCr(\'' + kind + '\',' + i + ')">Remove</button></td></tr>').join('')
+      : '<tr><td colspan="8" class="gray small">Nothing uploaded</td></tr>')
+    + '</tbody></table></div></div>';
+  return h;
 }
-function autoFitAll() {
-  form.creative.pictures.forEach((x, i) => { if (!STD_DIMS.includes(x.s)) autoFit(i); });
+function openCropTool() {
+  /* 文档待提供工具页面地址，先给占位提示 */
+  toast('Prototype only: open the crop tool in a new tab (URL TBD)', 'warn');
+}
+function setCr(kind, i, v) {
+  if (form.creative[kind][i]) { form.creative[kind][i].desc = v; render(); }
+}
+function delCr(kind, i) {
+  const x = form.creative[kind][i]; if (!x) return;
+  if (!confirm('是否删除 ' + x.n + ' ？')) return;
+  form.creative[kind].splice(i, 1); render();
+}
+function addCr(kind) {
+  const n = form.creative[kind].length + 1;
+  const pad = (v) => String(v).padStart(2, '0');
+  const d = new Date();
+  const up = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+    + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  form.creative[kind].push(kind === 'pictures'
+    ? { id:'p' + n, n:'new_image' + n + '.jpg', s:'1080x540', fmt:'JPG', link:'https://cdn.mobvista.com/cr/new_image' + n + '.jpg', desc:'', up:up }
+    : { id:'v' + n, n:'new_video' + n + '.mp4', s:'720x1280', fmt:'MP4', link:'https://cdn.mobvista.com/cr/new_video' + n + '.mp4', desc:'', up:up });
+  toast('Prototype only: one creative added'); render();
 }
 function addCr(kind) {
   const n = form.creative[kind].length + 1;
@@ -1672,14 +1705,23 @@ function cardTracking() {
     'Adv Link → Generate → Tracking Link, with parsing and validation',
     '<button class="btn sm" onclick="openMacroDoc()">Macros</button>');
 
-  /* Adv Link 是整条链路的输入：输入框下方就是 Generate，点开后在弹窗里配监测参数 */
-  h += '<div class="sec"><div class="sh">Adv Link</div><div class="sb">'
+  /* Adv Link 是整条链路的输入：字段名在左、输入框在右，输入框下方就是 Generate */
+  h += '<div class="fi">' + L('Adv Link') + '<div class="c wide">'
     + '<textarea rows="2" class="mono" placeholder="paste the link from upstream" oninput="setv(\'tracking.adv_link\',this.value)">' + esc(t.adv_link) + '</textarea>'
     + '<div class="row" style="margin-top:8px">'
     + '<button class="btn pri sm" onclick="openGenerate()">Generate</button></div>'
     + '</div></div>';
 
   h += linkBlock('click');
+
+  /* Third Party / Track Link Type：与 Generate 弹窗同源，正文也放出来，单行一个字段 */
+  h += '<div class="fi">' + L('Third Party', 1) + '<div class="c">'
+    + sel('tracking.third_party', t.third_party, MMPS) + '</div></div>'
+    + '<div class="fi">' + L('Track Link Type') + '<div class="c">'
+    + sel('tracking.track_link_type', t.track_link_type, TRACK_LINK_TYPES) + '</div></div>';
+
+  /* Async Flow 三件套：与 Tracking Link 同列对齐，勾 NO 时下面两个字段整体隐藏 */
+  h += asyncFlowFields();
 
   /* 展示监测是选填项，默认收起，点一下再展开 */
   h += '<div class="row" style="margin:0 0 14px">'
@@ -1695,45 +1737,67 @@ function linkBlock(kind) {
   const url = isClick ? t.tracking_link : t.adv_impression_link;
   const issues = validateLink(url, kind), p = parseLink(url);
   const errs = issues.filter((x) => x.level === 'err'), wrn = issues.filter((x) => x.level === 'warn');
-  let h = '<div class="sec"><div class="sh">' + (isClick ? 'Tracking Link (Click)' : 'Adv Impression Tracking Link (View)')
-    + '<span class="row" style="gap:6px;font-weight:400">'
-    + (isClick ? '' : '<button class="btn sm" onclick="autoGenerate(\'view\')">Auto Generate</button>')
-    + '</span></div><div class="sb">'
+  let h = '<div class="fi">' + L(isClick ? 'Tracking Link' : 'Adv Impression Tracking Link', isClick ? 1 : 0)
+    + '<div class="c wide">'
     + '<textarea rows="3" class="mono" placeholder="paste the MMP ' + (isClick ? ' click ' : ' impression ') + 'tracking link"'
-    + ' oninput="setUrl(\'' + kind + '\',this.value)">' + esc(url) + '</textarea>';
+    + ' oninput="setUrl(\'' + kind + '\',this.value)">' + esc(url) + '</textarea>'
+    + (isClick ? '' : '<div class="row" style="margin-top:8px"><button class="btn sm" onclick="autoGenerate(\'view\')">Auto Generate</button></div>');
   if (issues.length) {
     h += '<div style="margin-top:8px">' + issues.map((x) => '<div class="tip ' + (x.level === 'err' ? 'err' : 'warn') + '">' + esc(x.msg)
       + (x.fix === 'fill' ? ' <a onclick="fillMissing(\'' + kind + '\')">Fill Missing</a>' : '')
       + (x.fix === 'auto' ? ' <a onclick="autoGenerate(\'' + kind + '\')">Auto Generate</a>' : '')
       + (x.fix === 'macro' ? ' <a onclick="openMacroDoc()">View Macros</a>' : '') + '</div>').join('') + '</div>';
   }
-  if (p.ok) {
-    h += '<div class="ro" style="margin-top:10px"><div class="row small">'
-      + '<span class="gray">host</span><b class="mono">' + esc(p.host) + '</b>'
-      + '<span class="gray">path</span><b class="mono">' + esc(p.path || '(empty)') + '</b>'
-      + '<span class="gray">params</span><b>' + p.params.length + '</b></div></div>' + paramTable(kind, p);
-  }
+  if (p.ok) h += paramTable(kind, p);
   return h + '</div></div>';
 }
 function paramTable(kind, p) {
-  /* 一张表统一展示解析出来的参数：参数 / 值 / 含义 / 删除 */
+  /* 一张表统一展示解析出来的参数：参数 / 值 / 含义 / 删除
+     3.8.3 微调：首行固定 Domain 不可删，编辑失焦后重新解析，命中校验在 Description 列红字提示 */
+  const hostNote = /[\s\n]/.test(p.host) ? '存在换行符/空格' : '';
   let h = '<div class="sec" style="margin-top:10px"><div class="sh">Parse &amp; Identify</div><div class="sb" style="padding:0">'
     + '<table class="t"><thead><tr><th style="width:190px">Parameter</th><th>Value</th>'
     + '<th style="width:230px">Description</th><th style="width:60px">Delete</th></tr></thead><tbody>'
-    + (p.params.length ? p.params.map((x, i) => {
+    + '<tr class="' + (hostNote ? 'bad' : '') + '"><td><span class="mono">Domain</span></td>'
+    + '<td><input type="text" class="mono" value="' + esc(p.host) + '" onchange="setHost(\'' + kind + '\',this.value)"></td>'
+    + '<td class="small' + (hostNote ? ' err' : '') + '">' + esc(hostNote || '链接域名，由所选 Third Party 决定') + '</td>'
+    + '<td class="ct gray">—</td></tr>'
+    + p.params.map((x, i) => {
         const cls = classifyParam(x.k);
-        const bm = /\{@[^}]*@\}/.test(x.v) && !MACRO_SET.has((x.v.match(/\{@[^}]*@\}/) || [''])[0]);
+        const note = paramNote(x, p, i);
         const md = MACROS.find((m) => m.m === x.v);
         const desc = PARAM_DESC[x.k] || (md ? md.d : '自定义参数，3S 原样透传');
-        return '<tr class="' + (bm ? 'bad' : '') + '">'
+        return '<tr class="' + (note ? 'bad' : '') + '">'
           + '<td>' + (cls === 'required' ? '<span class="mono">' + esc(x.k) + '</span>'
-              : '<input type="text" class="mono" value="' + esc(x.k) + '" oninput="setParam(\'' + kind + '\',' + i + ',\'k\',this.value)">') + '</td>'
-          + '<td><input type="text" class="mono" value="' + esc(x.v) + '" oninput="setParam(\'' + kind + '\',' + i + ',\'v\',this.value)"></td>'
-          + '<td class="small">' + esc(desc) + '</td>'
+              : '<input type="text" class="mono" value="' + esc(x.k) + '" onchange="setParam(\'' + kind + '\',' + i + ',\'k\',this.value)">') + '</td>'
+          + '<td><input type="text" class="mono" value="' + esc(x.v) + '" onchange="setParam(\'' + kind + '\',' + i + ',\'v\',this.value)"></td>'
+          + '<td class="small' + (note ? ' err' : '') + '">' + esc(note || desc) + '</td>'
           + '<td class="ct"><a title="Delete this parameter" onclick="delParam(\'' + kind + '\',' + i + ')">🗑</a></td></tr>';
-      }).join('') : '<tr><td colspan="4" class="gray small">No parameter parsed from the link</td></tr>')
+      }).join('')
     + '</tbody></table></div></div>'
-    + '<div class="row" style="margin-top:8px"><button class="btn sm" onclick="addParam(\'' + kind + '\')">+ Add Parameter</button></div>';
+    + '<div class="row" style="margin-top:8px"><button class="btn sm" onclick="addParam(\'' + kind + '\')">+ Add Parameter</button>'
+    + '<span class="small gray">' + p.params.length + ' parameters parsed, in link order</span></div>';
+  return h;
+}
+/* Async Flow 三件套：勾 NO 时下面两个字段整体隐藏，勾 YES 才展开 */
+function asyncFlowFields() {
+  const t = form.tracking;
+  let h = '<div class="fi">' + L('Async Flow') + '<div class="c"><div class="row">'
+    + '<label class="chk"><input type="checkbox" ' + (t.async_flow ? '' : 'checked')
+    + ' onchange="toggleAsync(0)">NO</label>'
+    + '<label class="chk"><input type="checkbox" ' + (t.async_flow ? 'checked' : '')
+    + ' onchange="toggleAsync(1)">YES</label>'
+    + '</div></div></div>';
+  if (t.async_flow) {
+    h += '<div class="fi">' + L('Async Channel Whitelist') + '<div class="c wide">'
+      + '<input type="text" class="mono" placeholder="channel uuid, comma separated; empty = all channels" value="' + esc(t.async_channel_whitelist) + '"'
+      + ' onchange="setv(\'tracking.async_channel_whitelist\',this.value);render()"></div></div>'
+      + '<div class="fi">' + L('Store Link', 1) + '<div class="c wide"><div class="row" style="align-items:flex-end">'
+      + '<textarea rows="3" class="mono" style="flex:1" placeholder="store page link used by the async flow"'
+      + ' onchange="setv(\'tracking.store_link\',this.value);render()">' + esc(t.store_link) + '</textarea>'
+      + '<button class="btn pri sm" onclick="toast(\'Prototype only: open the store page in a new tab\')">Preview</button>'
+      + '</div></div></div>';
+  }
   return h;
 }
 function openMacroDoc() {
