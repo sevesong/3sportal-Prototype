@@ -151,8 +151,7 @@ textarea.mono{font-family:Menlo,Consolas,monospace;font-size:12px;line-height:1.
 <div class="hd">
   <h1>Create Offer</h1>
   <div class="ctx" id="ctx"></div>
-  <a class="btn sm" style="margin-left:auto" onclick="openLog()">Change Log</a>
-  <a class="btn sm" onclick="toast('Prototype only: back to the old Create Offer page')">Old Page</a>
+  <a class="btn sm" style="margin-left:auto" onclick="toast('Prototype only: back to the old Create Offer page')">Old Page</a>
 </div>
 <div class="wrap">
   <div class="main" id="main"></div>
@@ -197,8 +196,11 @@ const DEVICE_MODES = { phone: 'phone', tablet: 'tablet', all: 'all' };
 const TRACK_WAYS = { s2s: 'S2S', sdk: 'SDK', pixel: 'Pixel' };
 const LINK_TYPES = { normal: 'Normal', deeplink: 'Deeplink', onelink: 'OneLink', ctv: 'CTV', vta: 'VTA' };
 /* Track Link Type：CTA 点击归因 / VTA 展示归因 / Mix 混合 */
-const TRACK_LINK_TYPES = { cta: 'CTA', vta: 'VTA', mix: 'Mix' };
-const MMPS = { appsflyer: 'AppsFlyer', adjust: 'Adjust', branch: 'Branch', singular: 'Singular', none: 'None / Self-attributed' };
+/* Track Link Type 枚举随 Third Party 变：AppsFlyer 五项，Adjust 三项 */
+const TRACK_LINK_TYPES_AF  = { cta:'cta', vta:'vta', ctv:'ctv', engaged_click:'engaged click', engaged_view:'engaged view' };
+const TRACK_LINK_TYPES_ADJ = { cta:'cta', vta:'vta', ctv:'ctv' };
+const trackTypes = () => (form.tracking.third_party === 'adjust' ? TRACK_LINK_TYPES_ADJ : TRACK_LINK_TYPES_AF);
+const MMPS = { appsflyer: 'AppsFlyer', adjust: 'Adjust' };
 const TRACK_DOMAINS = ['track.mobvista.com', 'trk.mobvista.com', 'click.mobvista.com'];
 /* Adv Settlement Events 的两个枚举，取自现网 */
 const MATCH_TYPES = { uniq: 'uniq match', multi: 'multi match' };
@@ -328,13 +330,17 @@ const form = {
     ],
     /* Channel Set：结算口径 + event 级 payout 表 */
     chn_settle_type:'cpi',
-    chn_events:[{ name:'install', adv_price:0.62, payout:0.35, note:'1.quality requirement: retention rate 20%<br>2.no bot, no fraud' }] },
+    chn_events:[{ name:'install', adv_price:0.62, payout:0.35, note:'1.quality requirement: retention rate 20%<br>2.no bot, no fraud' }],
+    /* Margin 管控：文档仅给截图，这里按字段名推测的占位结构，待产品确认后调整 */
+    margin_control:1, min_margin:15, no_margin_channels:'' },
   cap: { budget_type:'daily',
     /* 页面不展示，建单时按默认值提交 */
     hard_cap:0,
     adv_conv_cap:{ on:0, val:20000 },
     chn_conv_cap:{ on:0, val:18000 },
     chn_click_cap:{ on:1, val:null },
+    /* 可分配日 cap：Conversion 固定不展示，默认 OPEN 不限量 */
+    alloc_daily_cap:{ on:1, val:null },
   },
   target: {
     countries: ['BR', 'MX'],
@@ -361,16 +367,18 @@ const form = {
     tracking_link:'https://app.appsflyer.com/com.neptune.domino?pid=mobvista_int&c={name}&advertising_id={@info.gaid@}&af_siteid={@info.site_id@}',
     track_way:'s2s', third_party:'appsflyer', track_link_type:'cta', link_type:'normal',
     async_flow:0, async_channel_whitelist:'', store_link:'', is_agency:1, af_prt:'Mobvista',
-    /* Math Random：四个可随机的维度，勾中后用 {@([..][parseInt(Math.random()*n)])@} 写入链接 */
+    /* Math Random：默认四个维度 + 可自定义行，value 为英文逗号分隔的候选值串 */
     rand: {
-      domain:   { on:0, list:['shorttv.onelink.me/FOV6', 'go.onelink.me/FOV6'] },
-      agency:   { on:0, list:[] },
-      pid:      { on:0, list:['mobvista_int', 'nativex_int'] },
-      af_adset: { on:0, list:[] },
-    } },
-  integration: { auto_channel:0, auto_channel_list:'chn_a1b2c3', api_doc_ack:0,
-    /* 手绘稿 + 调研反馈：建单模块支持顺手调自动对接渠道的 click cap 与跨 offer BT */
-    adjust_click_cap:1, click_cap:50000, cross_offer_bt:0, cross_offer_bt_group:'nep_domino_group' },
+      domain:   { raw:'shorttv.onelink.me/FOV6,go.onelink.me/FOV6' },
+      agency:   { raw:'' },
+      pid:      { raw:'mobvista_int,nativex_int' },
+      af_adset: { raw:'' },
+      c:        { raw:'' },
+    },
+    rand_custom: [] } ,
+  /* 自动对接：默认接入；渠道固定 mobpower_api_pub 仅展示，两个 cap 可编辑后带入对接
+     cap 默认值文档标注「待确认」，这里先给演示值 */
+  integration: { auto_channel:1, auto_channel_name:'mobpower_api_pub', click_cap:50000, channel_cap:20000 },
 };
 
 /* 变更日志：offer 维度所有模块的改动都进这里（PRD：新增 offer 维度变更日志集合） */
@@ -519,9 +527,13 @@ function inp(path, v, opt) {
 }
 function sel(path, cur, map, opt) {
   opt = opt || {};
-  return '<select ' + (opt.style ? 'style="' + opt.style + '"' : '') + ' onchange="setv(\'' + path + '\',this.value);render()">'
+  return '<select ' + (opt.style ? 'style="' + opt.style + '"' : '') + ' onchange="setv(\'' + path + '\',this.value);' + (opt.after || '') + 'render()">'
     + Object.keys(map).map((k) => '<option value="' + k + '" ' + (String(cur) === k ? 'selected' : '') + '>' + esc(map[k]) + '</option>').join('')
     + '</select>';
+}
+/* 切换 Third Party 后，当前 Track Link Type 若不在新枚举里，回落到 cta */
+function fixTrackType() {
+  if (!trackTypes()[form.tracking.track_link_type]) form.tracking.track_link_type = 'cta';
 }
 function segbtn(path, cur, map) {
   return '<div class="seg">' + Object.keys(map).map((k) =>
@@ -926,29 +938,53 @@ function clearGeo() {
    形如 {@(['a','b'][parseInt(Math.random()*2)])@}，既可能出现在 host 也可能出现在参数值里 */
 const RAND_RE = /\{@\(\[[^\]]*\]\[parseInt\(Math\.random\(\)\*\d+\)\]\)@\}/;
 const isRand = (s) => RAND_RE.test(String(s || ''));
-/* Math Random 四个维度：维度名 + 输入提示 + 写入链接的目标位置 */
-const RAND_DIMS = {
-  domain:   { name:'Domain',   ph:'candidate domain, e.g. go.onelink.me/S8mj', target:'host' },
-  agency:   { name:'Agency',   ph:'candidate agency, e.g. Mobvista',        target:'af_prt' },
-  pid:      { name:'Pid',      ph:'candidate pid, e.g. mobvista_int',       target:'pid' },
-  af_adset: { name:'af_adset', ph:'candidate af_adset, e.g. adset_a',       target:'af_adset' },
+/* Math Random 默认 key：随 Third Party 整套切换，key 不可编辑 */
+const RAND_DIMS_AF = {
+  domain:   { name:'Domain',   ph:'多个值用英文逗号分隔，如 go.onelink.me/S8mj,shorttv.onelink.me/FOV6', target:'host' },
+  agency:   { name:'Agency',   ph:'多个值用英文逗号分隔，如 Mobvista,NativeX', target:'af_prt' },
+  pid:      { name:'Pid',      ph:'多个值用英文逗号分隔，如 mobvista_int,nativex_int', target:'pid' },
+  af_adset: { name:'af_adset', ph:'多个值用英文逗号分隔，如 adset_a,adset_b', target:'af_adset' },
 };
-function toggleRandDim(k, on) { form.tracking.rand[k].on = on ? 1 : 0; openGenerate(); }
-function addRandVal(k) {
-  const el = $('#rnd_' + k), v = (el && el.value || '').trim();
-  if (!v) return toast('Enter a candidate value first', 'warn');
-  const d = form.tracking.rand[k];
-  if (d.list.includes(v)) return toast('That candidate already exists', 'warn');
-  d.list.push(v); d.on = 1;
-  if (el) el.value = '';
+const RAND_DIMS_ADJ = {
+  domain:   { name:'Domain', ph:'多个值用英文逗号分隔，如 abc.go.link/xyz,app.adjust.com/abc123', target:'host' },
+  c:        { name:'c',      ph:'多个值用英文逗号分隔，如 camp_a,camp_b', target:'c' },
+};
+const randDims = () => (form.tracking.third_party === 'adjust' ? RAND_DIMS_ADJ : RAND_DIMS_AF);
+/* 逗号串 → 候选值数组：去首尾空格、跳过空值，按文档不去重（重复值可用来调权重） */
+function randVals(raw) {
+  const out = [];
+  String(raw || '').split(',').forEach((x) => {
+    const v = x.trim();
+    if (v) out.push(v);
+  });
+  return out;
+}
+function setRandRaw(k, v) { form.tracking.rand[k].raw = v; openGenerate(); }
+/* 自定义行：key 由使用者填，key 即写入链接的参数名 */
+function addRandCustom() {
+  form.tracking.rand_custom.push({ on:0, key:'', raw:'' });
   openGenerate();
 }
-function delRandVal(k, i) { form.tracking.rand[k].list.splice(i, 1); openGenerate(); }
-function clearRandVals(k) {
-  const d = form.tracking.rand[k];
-  d.list = []; d.on = 0;
-  const el = $('#rnd_' + k); if (el) el.value = '';
+function setRandCustom(i, f, v) {
+  const row = form.tracking.rand_custom[i]; if (!row) return;
+  row[f] = f === 'on' ? (v ? 1 : 0) : v;
   openGenerate();
+}
+function delRandCustom(i) { form.tracking.rand_custom.splice(i, 1); openGenerate(); }
+/* 启用的行：勾选 + 有候选值，自定义行还要有 key */
+/* 启用的行：填入候选值即参与生成（无勾选概念），自定义行还要有 key */
+function randRows() {
+  const t = form.tracking, out = [];
+  const D = randDims();
+  Object.keys(D).forEach((k) => {
+    const vals = randVals((t.rand[k] || {}).raw);
+    if (vals.length) out.push({ key:D[k].target, vals:vals, dim:k, name:D[k].name });
+  });
+  (t.rand_custom || []).forEach((row) => {
+    const vals = randVals(row.raw), key = (row.key || '').trim();
+    if (key && vals.length) out.push({ key:key, vals:vals, dim:'custom', name:key });
+  });
+  return out;
 }
 function randPool(s) {
   const m = String(s || '').match(/\[((?:'[^']*'\s*,?\s*)+)\]/);
@@ -1004,22 +1040,28 @@ function autoGenerate(kind) {
    ============================================================ */
 function openGenerate() {
   const t = form.tracking, R = t.rand;
-  const dim = (k) => {
-    const d = R[k], m = RAND_DIMS[k];
-    return '<div class="fi"><label><label class="chk" style="margin:0">'
-      + '<input type="checkbox" ' + (d.on ? 'checked' : '') + ' onchange="toggleRandDim(\'' + k + '\',this.checked)">'
-      + m.name + '</label></label><div class="c wide">'
-      + '<div class="row"><input type="text" id="rnd_' + k + '" class="mono" placeholder="' + esc(m.ph) + '" style="flex:1">'
-      + '<button class="btn sm" onclick="addRandVal(\'' + k + '\')">Add</button>'
-      + (d.list.length ? '<button class="btn sm" onclick="clearRandVals(\'' + k + '\')">Clear All</button>' : '')
-      + '</div>'
-      + (d.list.length ? '<div class="row" style="margin-top:6px">'
-          + d.list.map((v, i) => '<span class="tag">' + esc(v)
-              + ' <a onclick="delRandVal(\'' + k + '\',' + i + ')">×</a></span>').join('')
-          + '</div>' : '')
-      + '</div></div>';
+  /* 默认四行：复选框 / key（只读）/ value（逗号分隔） */
+  const dimRow = (k) => {
+    const d = R[k] || { raw:'' }, m = randDims()[k];
+    const vals = randVals(d.raw);
+    return '<tr><td class="mono small">' + m.name + '</td>'
+      + '<td><input type="text" class="mono" placeholder="' + esc(m.ph) + '" value="' + esc(d.raw) + '"'
+      + ' onchange="setRandRaw(\'' + k + '\',this.value)">'
+      + (vals.length ? '<div class="small gray">' + vals.length + ' 个候选值</div>' : '')
+      + '</td><td class="ct gray">—</td></tr>';
   };
-  const onDims = Object.keys(RAND_DIMS).filter((k) => R[k].on && R[k].list.length);
+  /* 自定义行：key 可编辑，key 即写入链接的参数名 */
+  const cusRow = (row, i) => {
+    const vals = randVals(row.raw);
+    return '<tr>'
+      + '<td><input type="text" class="mono" placeholder="custom key，如 af_sub1" value="' + esc(row.key) + '"'
+      + ' onchange="setRandCustom(' + i + ',\'key\',this.value)"></td>'
+      + '<td><input type="text" class="mono" placeholder="多个值用英文逗号分隔" value="' + esc(row.raw) + '"'
+      + ' onchange="setRandCustom(' + i + ',\'raw\',this.value)">'
+      + (vals.length ? '<div class="small gray">' + vals.length + ' 个候选值</div>' : '')
+      + '</td><td class="ct"><button class="btn lnk" onclick="delRandCustom(' + i + ')">Remove</button></td></tr>';
+  };
+  const rows = randRows();
   $('#layer').innerHTML = '<div class="mask" onclick="if(event.target===this)closeLayer()"><div class="dlg w960">'
     + '<div class="h">Tracking Link generated from Adv Link<a onclick="closeLayer()">×</a></div><div class="b">'
     + '<div class="fi"><label><span class="rq">*</span>Adv Link</label><div class="c wide">'
@@ -1028,15 +1070,21 @@ function openGenerate() {
     /* 生成配置：只保留生成链接必须的两个枚举，用下拉单选 */
     + '<div class="sec"><div class="sh">Generation Settings</div><div class="sb"><div class="g2">'
     + '<div class="fi">' + L('Third Party', 1) + '<div class="c">'
-    + sel('tracking.third_party', t.third_party, MMPS) + '</div></div>'
+    + sel('tracking.third_party', t.third_party, MMPS, { after:'fixTrackType();openGenerate();' }) + '</div></div>'
     + '<div class="fi">' + L('Track Link Type', 1) + '<div class="c">'
-    + sel('tracking.track_link_type', t.track_link_type, TRACK_LINK_TYPES) + '</div></div>'
+    + sel('tracking.track_link_type', t.track_link_type, trackTypes()) + '</div></div>'
     + '</div>'
-    /* Math Random 子模块：四个维度各自维护候选值 */
-    + '<div class="sec"><div class="sh">Math Random</div><div class="sb">'
-    + Object.keys(RAND_DIMS).map(dim).join('')
-    + (onDims.length ? '<div class="pv" style="margin-top:8px">'
-        + esc(onDims.map((k) => (RAND_DIMS[k].target + '').padEnd(8, ' ') + '= ' + randExpr(R[k].list)).join('\n')) + '</div>' : '')
+    /* Math Random：三列表格，四行固定 key + 可新增 custom 行 */
+    + '<div class="sec"><div class="sh">Math Random</div><div class="sb" style="padding:0">'
+    + '<table class="t"><thead><tr><th style="width:170px">Key</th>'
+    + '<th>Value</th><th class="ct" style="width:84px">Action</th></tr></thead><tbody>'
+    + Object.keys(randDims()).map(dimRow).join('')
+    + (t.rand_custom || []).map(cusRow).join('')
+    + '</tbody></table>'
+    + '<div class="row" style="margin:8px 10px 10px"><button class="btn sm" onclick="addRandCustom()">+ Add Custom</button>'
+    + '<span class="small gray">填入候选值的行才参与生成</span></div>'
+    + (rows.length ? '<div class="pv" style="margin:0 10px 10px">'
+        + esc(rows.map((r) => (r.key + '').padEnd(10, ' ') + '= ' + randExpr(r.vals)).join('\n')) + '</div>' : '')
     + '</div></div>'
     + '</div></div>'
     + '</div><div class="f"><button class="btn" onclick="closeLayer()">Cancel</button>'
@@ -1046,29 +1094,36 @@ function runGenerate() {
   const t = form.tracking, a = form.adv, r = MMP_RULES[t.third_party] || {};
   const p = parseLink(t.adv_link);
   if (!p.ok) return toast('Adv Link cannot be parsed; check for a missing https://', 'err');
-  const R = t.rand;
-  if (R.domain.on && R.domain.list.length) p.host = randExpr(R.domain.list);
+  const rows = randRows();
+  /* 勾了但没填值 / 自定义行没填 key，阻塞提示，避免生成出一条看似成功但没随机的链接 */
+  /* 自定义行填了候选值却没填 Key，这行数据无处可写，拦下来而不是静默丢弃 */
+  const bad = [];
+  (t.rand_custom || []).forEach((row, i) => {
+    if (randVals(row.raw).length && !(row.key || '').trim()) bad.push('第 ' + (i + 1) + ' 行');
+  });
+  if (bad.length) return toast('Math Random 自定义行填了候选值但缺 Key：' + bad.join('、'), 'err');
+  /* Domain 行替换 host，其余行写到同名参数上 */
+  const dm = rows.filter((x) => x.key === 'host')[0];
+  if (dm) p.host = randExpr(dm.vals);
   if (!p.path && r.path_rule === 'bundle') p.path = primaryOS() === 'ios' ? ('id' + (a.app_id || '')) : a.package_name;
   const has = {};
   p.params.forEach((x, i) => { has[x.k] = i; });
-  /* 补齐当前 MMP 的必填参数，已有的不动 */
+  /* 先补齐当前 MMP 的必填参数，已有的不动 */
   (r.required || []).forEach((x) => {
     if (x.os && x.os !== primaryOS()) return;
     if (has[x.k] == null) { p.params.push({ k:x.k, v:x.v }); has[x.k] = p.params.length - 1; }
   });
-  /* pid / agency / af_adset 三个维度写到对应参数上 */
-  ['pid', 'agency', 'af_adset'].forEach((k) => {
-    if (!R[k].on || !R[k].list.length) return;
-    const key = RAND_DIMS[k].target, ex = randExpr(R[k].list);
-    if (has[key] != null) p.params[has[key]].v = ex;
-    else { p.params.push({ k:key, v:ex }); has[key] = p.params.length - 1; }
+  /* 再用随机表达式覆盖：参数已存在则覆盖其值，不存在则追加 */
+  rows.forEach((x) => {
+    if (x.key === 'host') return;
+    if (has[x.key] != null) p.params[has[x.key]].v = randExpr(x.vals);
+    else { p.params.push({ k:x.key, v:randExpr(x.vals) }); has[x.key] = p.params.length - 1; }
   });
   /* 拉活单补 is_retargeting，避免报表口径与实际跑法不一致 */
   if (form.basic.is_reactivation === 'rt' && has.is_retargeting == null) p.params.push({ k:'is_retargeting', v:'true' });
   t.tracking_link = buildLink(p);
-  const onDims = Object.keys(RAND_DIMS).filter((k) => R[k].on && R[k].list.length);
   pushLog('Tracking Info', 'Tracking Link generated from Adv Link'
-    + (onDims.length ? '（Math Random：' + onDims.map((k) => RAND_DIMS[k].name + ' ' + R[k].list.length + ' of').join('、') + '）' : ''));
+    + (rows.length ? '（Math Random：' + rows.map((x) => x.name + ' ' + x.vals.length + ' 个候选值').join('、') + '）' : ''));
   closeLayer(); render();
   toast('Tracking Link generated and applied; validation runs below');
 }
@@ -1272,6 +1327,7 @@ function secErrors(k) {
     if (showAdvCap && !form.cap.adv_conv_cap.on && !(form.cap.adv_conv_cap.val > 0)) e.push('Adv Conversion Cap value required when OPEN is off');
     if (!form.cap.chn_conv_cap.on && !(form.cap.chn_conv_cap.val > 0)) e.push('Channel Conversion Cap value required when OPEN is off');
     if (!form.cap.chn_click_cap.on && !(form.cap.chn_click_cap.val > 0)) e.push('Click Cap value required when OPEN is off');
+    if (!form.cap.alloc_daily_cap.on && !(form.cap.alloc_daily_cap.val > 0)) e.push('Allocable Daily Cap value required when OPEN is off');
   }
   if (k === 'target') {
     if (!(form.target.platform || []).length) e.push('Platform is required');
@@ -1298,6 +1354,7 @@ function secWarns(k) {
    ============================================================ */
 let openPkg = false;       /* Package Info 折叠态，PRD 要求默认收起 */
 let openImp = false;       /* Adv Impression Tracking Link 折叠态：选填，默认收起 */
+let openMargin = false;    /* Margin-control 折叠态，默认收起 */
 function cardHead(k, name, note, right) {
   const s = SECS.find((x) => x.k === k) || {};
   return '<div class="card' + (s.nw ? ' new' : '') + '" id="' + k + '"><div class="h">' + esc(name)
@@ -1309,7 +1366,7 @@ const L = (t, rq) => '<label>' + (rq ? '<span class="rq">*</span>' : '') + t + '
 /* ---------- 1. Adv & Package & Campaign Info ---------- */
 function cardAdv() {
   const a = form.adv;
-  let h = cardHead('adv', 'Adv & Package & Campaign Info', 'Campaign + Package info merged; only four primary fields are shown by default');
+  let h = cardHead('adv', 'Adv & Package & Campaign Info');
   /* 左列：Related Campaign → Related Invoice → 展开入口；右列：Advertiser → Package Name → App Name
      campaign 是这个模块的入口，选中后右列三个字段与单据一起带出，所以右列都是只读展示 */
   const ro = (v, mono) => v ? '<span class="' + (mono ? 'mono ' : '') + 'small">' + esc(v) + '</span>'
@@ -1387,8 +1444,7 @@ function addAdvertiser() { toast('Prototype only: Add Advertiser opens in a new 
 function cardBasic() {
   const b = form.basic, a = form.adv;
   const nDup = nameDup(b.offer_name), uDup = uuidDup(b.offer_uuid);
-  let h = cardHead('basic', 'Basic Info', 'Basic info + operation info merged; PM / BD inherit from the advertiser',
-    '<span class="tag gray mono">Offer ID ' + (b.offer_id ? esc(b.offer_id) : 'generated after creation') + '</span>');
+  let h = cardHead('basic', 'Basic Info');
 
   /* Offer Name 与 Offer UUID 各自一个字段，两列并排 */
   h += '<div class="g2">'
@@ -1446,8 +1502,7 @@ function cardSettle() {
   const a = s.adv_settle_type, c = s.chn_settle_type;
   const dash = '<span class="gray">-</span>';
   const numPh = '支持小数点后三位';
-  let h = cardHead('settle', 'Settlement Info',
-    'Adv Set Type drives the upstream settlement basis, Channel Set Type the downstream one; both tables share one event list');
+  let h = cardHead('settle', 'Settlement Info');
 
   /* 上游口径：Channel 选 CPS 时只能配 CPS */
   h += '<div class="fi">' + L('Adv Set Type', 1) + '<div class="c">'
@@ -1514,6 +1569,29 @@ function cardSettle() {
         + '<td><div class="rt" contenteditable="true" data-ph="Notes Example：1.quality requirement: retention rate 20%  2.no bot, no fraud"'
         + ' oninput="form.settle.chn_events[' + i + '].note=this.innerHTML">' + (e.note || '') + '</div></td></tr>').join('')
     + '</tbody></table>';
+
+  /* Margin 管控：默认收起，入口置于 Channel 侧表格下方
+     文档只给了截图没给控件描述，这里按字段名推测：开关 + 最低毛利率 + 不管控渠道名单 */
+  h += '<div class="row" style="margin-top:12px">'
+    + '<button class="btn sm" onclick="openMargin=!openMargin;render()">'
+    + (openMargin ? 'Hide Margin-control Details ▴' : 'Show Margin-control Details ▾') + '</button>'
+    + '<span class="small gray">按截图推测的占位结构，待产品确认</span></div>'
+    + (openMargin
+      ? '<div class="sec" style="margin-top:8px"><div class="sb">'
+        + '<div class="fi">' + L('margin control', 1) + '<div class="c"><div class="row">'
+        + chkBool('settle.margin_control', s.margin_control)
+        + (s.margin_control
+            ? '<span style="width:150px">' + inp('settle.min_margin', s.min_margin, { type:'number', ph:'min margin %' }) + '</span>'
+              + '<span class="small gray" style="white-space:nowrap">% 最低毛利率</span>'
+              + ii('低于该毛利率的渠道会被限制投放；关掉则该 offer 不做毛利管控')
+            : '')
+        + '</div></div></div>'
+        + '<div class="fi">' + L('No Margin-control Channel') + '<div class="c wide">'
+        + '<textarea rows="2" class="mono" placeholder="channel uuid，支持英文逗号 / 空格分隔，留空表示全部渠道都受管控"'
+        + ' oninput="setv(\'settle.no_margin_channels\',this.value)">' + esc(s.no_margin_channels) + '</textarea>'
+        + '<div class="tip">' + rows(s.no_margin_channels).length + ' channels 不受毛利管控</div>'
+        + '</div></div>'
+        + '</div></div>' : '');
   return h + '</div></div>';
 }
 /* 枚举复选框：lock 里的枚举置灰不可选，hide 里的枚举直接不展示（口径组合约束） */
@@ -1551,8 +1629,7 @@ function delSetRow(i) {
 /* ---------- 4. Cap Info ---------- */
 function cardCap() {
   const c = form.cap, st = form.settle;
-  let h = cardHead('cap', 'Cap Info',
-    'Each cap has its own OPEN switch; Conversion follows the event name configured on the settlement side');
+  let h = cardHead('cap', 'Cap Info');
   /* OPEN 打开即锁定数值：开着不可编辑，要改先关掉开关；Value 只收正整数 */
   const row = (path, o, name, conv, tag) =>
     '<tr class="' + (o.on ? '' : 'gray') + '"><td>' + name + (tag || '') + '</td>'
@@ -1564,7 +1641,7 @@ function cardCap() {
   /* Adv Conversion Cap 只在上游按 install、下游按 event 结算时才有意义 */
   const showAdvCap = st.adv_settle_type === 'cpi' && st.chn_settle_type === 'cpe';
   /* OPEN 关掉的行 Value 必填，表头带 * */
-  const valRq = (showAdvCap && !c.adv_conv_cap.on) || !c.chn_conv_cap.on || !c.chn_click_cap.on;
+  const valRq = (showAdvCap && !c.adv_conv_cap.on) || !c.chn_conv_cap.on || !c.chn_click_cap.on || !c.alloc_daily_cap.on;
   h += '<div class="capw">'
     + '<div class="fi">' + L('Cap Type') + '<div class="c"><span class="tag gray">Daily Control</span></div></div>'
     + '<table class="t"><thead><tr><th style="width:210px">Cap</th><th class="ct" style="width:150px">Conversion</th>'
@@ -1573,6 +1650,8 @@ function cardCap() {
     + (showAdvCap ? row('cap.adv_conv_cap', c.adv_conv_cap, 'Adv Conversion Cap', advConvName(), '') : '')
     + row('cap.chn_conv_cap', c.chn_conv_cap, 'Channel Conversion Cap', chnConvName(), '')
     + row('cap.chn_click_cap', c.chn_click_cap, 'Click Cap', 'clicks', '')
+    /* Allocable Daily Cap：Conversion 不适用，固定展示 — */
+    + row('cap.alloc_daily_cap', c.alloc_daily_cap, 'Allocable Daily Cap', '', '')
     + '</tbody></table>'
     + (showAdvCap && capVal(c.chn_conv_cap) != null && capVal(c.adv_conv_cap) != null && capVal(c.chn_conv_cap) > capVal(c.adv_conv_cap)
       ? '<div class="tip warn">Channel Cap is higher than Adv Cap; the excess cannot be billed to the advertiser</div>' : '')
@@ -1582,9 +1661,8 @@ function cardCap() {
 
 /* ---------- 5. Target Info（含三级 Geo） ---------- */
 function cardTarget() {
-  const t = form.target, tot = geoTotals(), iss = geoIssues();
-  let h = cardHead('target', 'Target Info', 'Version / device / geo targeting fields merged into one module',
-    '<span class="sum"><span>Countries <b>' + tot.countries + '</b></span><span>Regions <b>' + tot.states + '</b></span><span>Cities <b>' + tot.cities + '</b></span></span>');
+  const t = form.target, iss = geoIssues();
+  let h = cardHead('target', 'Target Info');
 
   /* 全部按字段平铺，不再分「设备与版本定向 / 常用 Geo / Target Geo」几个小标题 */
   h += '<div class="g2">'
@@ -1635,8 +1713,7 @@ function pasteGeo() {
 }
 /* ---------- 7. Creative Info ---------- */
 function cardCreative() {
-  let h = cardHead('creative', 'Creative Info',
-    'Size and filename checks relaxed; jump to the crop tool when needed', '');
+  let h = cardHead('creative', 'Creative Info');
   /* 3.9.1 / 3.9.2：Picture 与 Video 用同一张八列表，各自全宽一行 */
   h += crTable('pictures', 'Picture Info', 1);
   h += crTable('videos', 'Video Info', 0);
@@ -1662,7 +1739,7 @@ function crTable(kind, title, required) {
         + '<td><input type="text" placeholder="optional note" value="' + esc(x.desc) + '"'
         + ' onchange="setCr(\'' + kind + '\',' + i + ',this.value)"></td>'
         + '<td class="ct small gray">' + esc(x.up) + '</td>'
-        + '<td class="ct"><button class="btn lnk" onclick="delCr(\'' + kind + '\',' + i + ')">Remove</button></td></tr>').join('')
+        + '<td class="ct"><button class="btn lnk" onclick="delCr(\'' + kind + '\',' + i + ')">DEL</button></td></tr>').join('')
       : '<tr><td colspan="8" class="gray small">Nothing uploaded</td></tr>')
     + '</tbody></table></div></div>';
   return h;
@@ -1701,8 +1778,7 @@ function addCr(kind) {
 /* ---------- 8. Tracking Info（含解析与提醒） ---------- */
 function cardTracking() {
   const t = form.tracking;
-  let h = cardHead('tracking', 'Tracking Info',
-    'Adv Link → Generate → Tracking Link, with parsing and validation',
+  let h = cardHead('tracking', 'Tracking Info', '',
     '<button class="btn sm" onclick="openMacroDoc()">Macros</button>');
 
   /* Adv Link 是整条链路的输入：字段名在左、输入框在右，输入框下方就是 Generate */
@@ -1716,9 +1792,9 @@ function cardTracking() {
 
   /* Third Party / Track Link Type：与 Generate 弹窗同源，正文也放出来，单行一个字段 */
   h += '<div class="fi">' + L('Third Party', 1) + '<div class="c">'
-    + sel('tracking.third_party', t.third_party, MMPS) + '</div></div>'
+    + sel('tracking.third_party', t.third_party, MMPS, { after:'fixTrackType();' }) + '</div></div>'
     + '<div class="fi">' + L('Track Link Type') + '<div class="c">'
-    + sel('tracking.track_link_type', t.track_link_type, TRACK_LINK_TYPES) + '</div></div>';
+    + sel('tracking.track_link_type', t.track_link_type, trackTypes()) + '</div></div>';
 
   /* Async Flow 三件套：与 Tracking Link 同列对齐，勾 NO 时下面两个字段整体隐藏 */
   h += asyncFlowFields();
@@ -1838,34 +1914,32 @@ function runPasteGeo() {
 /* ---------- 9. Integration Info ---------- */
 function cardIntegration() {
   const g = form.integration;
-  let h = cardHead('integration', 'Integration Info',
-    'Decide auto-S2S click cap and cross-offer BT while creating the offer');
-  h += '<div class="fi">' + L('是否接入自动对接渠道') + '<div class="c"><div class="row">'
+  let h = cardHead('integration', 'Integration Info');
+  h += '<div class="fi">' + L('是否接入自动对接渠道', 1) + '<div class="c"><div class="row">'
     + '<label class="chk"><input type="checkbox" ' + (g.auto_channel ? 'checked' : '')
     + ' onchange="setv(\'integration.auto_channel\',1);render()">是</label>'
     + '<label class="chk"><input type="checkbox" ' + (g.auto_channel ? '' : 'checked')
     + ' onchange="setv(\'integration.auto_channel\',0);render()">否</label>'
-    + '</div></div></div>'
-    + (g.auto_channel ? '<div class="fi">' + L('Auto S2S Channels') + '<div class="c">'
-        + '<textarea rows="2" class="mono" placeholder="one channel uuid per line, empty = all connected channels" oninput="setv(\'integration.auto_channel_list\',this.value)">' + esc(g.auto_channel_list) + '</textarea>'
-        + '<div class="tip">' + rows(g.auto_channel_list).length + ' channels</div></div></div>'
-      /* 手绘稿：建单模块支持选择是否调整自动对接渠道的 click cap + 跨 offer bt */
-      + '<div class="sec"><div class="sh">Onboarding Settings</div><div class="sb">'
-      + '<div class="fi">' + L('Adjust Click Cap') + '<div class="c"><div class="row">'
-      + chkBool('integration.adjust_click_cap', g.adjust_click_cap)
-      + (g.adjust_click_cap ? '<span style="width:140px">' + inp('integration.click_cap', g.click_cap, { type:'number' }) + '</span>'
-          + '<span class="small gray keep">clicks / day</span>'
-          + ii('Off keeps the default click cap from channel onboarding; this one is per auto-S2S channel') : '')
-      + '</div></div></div>'
-      + '<div class="fi">' + L('Cross-offer BT') + '<div class="c"><div class="row">'
-      + chkBool('integration.cross_offer_bt', g.cross_offer_bt)
-      + (g.cross_offer_bt ? '<span style="width:220px">' + inp('integration.cross_offer_bt_group', g.cross_offer_bt_group, { cls:'mono' }) + '</span>'
-          + ii('Offers in the same BT group share blacklists and dedup rules') : '')
-      + '</div></div></div>'
-      + '</div></div>' : '')
-    + '';
+    + '</div></div></div>';
+  if (g.auto_channel) {
+    /* 渠道名写死仅展示，两个 cap 可编辑，设置值带入自动对接 */
+    h += '<div class="sec"><div class="sh">Auto Integration Channels</div><div class="sb">'
+      + '<div class="fi">' + L('Channel') + '<div class="c">'
+      + '<span class="tag gray mono">' + esc(g.auto_channel_name) + '</span></div></div>'
+      + '<div class="fi">' + L('click cap') + '<div class="c"><div class="row">'
+      + '<span style="width:150px">' + inp('integration.click_cap', g.click_cap, { type:'number' }) + '</span>'
+      + '<span class="small gray" style="white-space:nowrap">clicks / day</span></div></div></div>'
+      + '<div class="fi">' + L('channel cap') + '<div class="c"><div class="row">'
+      + '<span style="width:150px">' + inp('integration.channel_cap', g.channel_cap, { type:'number' }) + '</span>'
+      + '<span class="small gray" style="white-space:nowrap">conversions / day</span></div></div></div>'
+      + '<div class="tip">设置的 ' + esc(g.auto_channel_name) + ' cap 值会带入自动对接；默认值待产品确认</div>'
+      + '</div></div>';
+  } else {
+    h += '<div class="tip">选「否」时同当前逻辑，仅自动对接 abc</div>';
+  }
   return h + '</div></div>';
 }
+
 
 /* 变更日志：offer 维度所有模块的改动集合 */
 function openLog() {
@@ -1882,17 +1956,13 @@ function openLog() {
 
 /* ============================================================
    右侧锚点导航 + 渲染入口
-   摘要标签只暴露结论：必填未完成 / 提醒数 / 关键计数
+   摘要标签三态：Missing（必填未填）/ Warning（仅 Tracking Info 的解析提醒）/ Completed
    ============================================================ */
 let curSec = SECS[0].k;
 function navBadge(k) {
-  const e = secErrors(k).length, w = secWarns(k).length;
-  if (e) return { t: e + ' required missing', cls:'err' };
-  if (w) return { t: w + ' warnings', cls:'warn' };
-  if (k === 'target') { const g = geoTotals();
-    return { t: g.countries + ' countries / ' + g.states + ' regions / ' + g.cities + ' cities', cls:'ok' }; }
-  if (k === 'creative') return { t: form.creative.pictures.length + ' pictures / ' + form.creative.videos.length + ' videos', cls:'ok' };
-  if (k === 'tracking') return { t:'Passed', cls:'ok' };
+  if (secErrors(k).length) return { t:'Missing', cls:'err' };
+  /* 只有 Tracking Link 的校验解析会产出提醒，其余模块不展示 Warning */
+  if (k === 'tracking' && secWarns(k).length) return { t:'Warning', cls:'warn' };
   return { t:'Completed', cls:'ok' };
 }
 function renderNav() {
@@ -1956,10 +2026,11 @@ function doCreate() {
       $('#layer').innerHTML = '<div class="mask"><div class="dlg"><div class="h">Result<a onclick="closeLayer()">×</a></div><div class="b">'
         + '<div class="row"><span class="tag g">Created</span><b class="mono">' + esc(o.uuid) + '</b></div>'
         + '<div class="row small gray" style="margin-top:6px">Offer ID 3119805 · ' + esc(o.name) + '</div>'
-        + (form.integration.auto_channel ? '<div class="tip">Auto S2S is on'
-            + (form.integration.adjust_click_cap ? '，click cap = ' + form.integration.click_cap : '')
-            + (form.integration.cross_offer_bt ? ', cross-offer BT group = ' + esc(form.integration.cross_offer_bt_group) : '')
-            + '. Continue in Delivery to configure scaling.</div>' : '')
+        + (form.integration.auto_channel
+            ? '<div class="tip">Auto integration on: ' + esc(form.integration.auto_channel_name)
+              + '，click cap = ' + form.integration.click_cap + '，channel cap = ' + form.integration.channel_cap
+              + '. Continue in Delivery to configure scaling.</div>'
+            : '<div class="tip">Auto integration off: 仅自动对接 abc（同当前逻辑）</div>')
         + '<div class="tip">Prototype only: the real build calls the create API and surfaces failures with a retry.</div>'
         + '</div><div class="f"><button class="btn" onclick="closeLayer()">Done</button>'
         + '<button class="btn pri" onclick="closeLayer();toast(\'Prototype only: jump to Delivery settings\')">Go to Delivery</button></div></div></div>';
