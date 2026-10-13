@@ -330,7 +330,7 @@ const form = {
     ],
     /* Channel Set：结算口径 + event 级 payout 表 */
     chn_settle_type:'cpi',
-    chn_events:[{ name:'install', adv_price:0.62, payout:0.35, note:'1.quality requirement: retention rate 20%<br>2.no bot, no fraud' }],
+    chn_events:[{ name:'install', adv_price:0.62, payout:0.35, note:'' }],
     /* Margin 管控：文档仅给截图，这里按字段名推测的占位结构，待产品确认后调整 */
     margin_control:1, min_margin:15, no_margin_channels:'' },
   cap: { budget_type:'daily',
@@ -412,9 +412,11 @@ function syncSettle() {
   if (s.adv_settle_type === 'cps' && s.chn_settle_type === 'cpi') s.chn_settle_type = 'cpe';
   const idx = s.adv_events.findIndex((x) => x.name === 'install');
   if (hasInstallRow()) {
-    if (idx < 0) s.adv_events.unshift({ name:'install', real:null, match:'uniq', window:'lifetime' });
+    /* 口径切回来时优先用缓存，避免已填的价格 / 匹配规则丢失 */
+    if (idx < 0) s.adv_events.unshift(s._installCache || { name:'install', real:null, match:'uniq', window:'lifetime' });
     else if (idx > 0) s.adv_events.unshift(s.adv_events.splice(idx, 1)[0]);
   } else if (idx >= 0) {
+    s._installCache = s.adv_events[idx];
     s.adv_events.splice(idx, 1);
   }
   /* 除 install 外至少保留一行，否则 CPE / CPS 没有可结算的 event */
@@ -452,10 +454,8 @@ const advPriceOn = (e) => {
   return true;
 };
 /* Channel 表的 Adv Price / Channel Payout：上下游同口径且非 CPI 时展示 - 并置灰 */
-const chnPriceOn = () => {
-  const s = form.settle;
-  return !(s.adv_settle_type === s.chn_settle_type && s.chn_settle_type !== 'cpi');
-};
+/* Adv Price / Channel Payout 是否可填：只有下游按 CPS 分成时不在这里填（文档场景6），其余场景都可填 */
+const chnPriceOn = () => form.settle.chn_settle_type !== 'cps';
 /* Channel 表 Event Name 的候选：CPE 取除 install 外的 event，CPS 取全部 */
 const chnEventOpts = () => {
   const s = form.settle;
@@ -1515,8 +1515,8 @@ function cardSettle() {
   const hasEvtRow = advShownRows().some((x) => x.name !== 'install');   /* 有非 install 行才有可编辑的名称与匹配规则 */
   h += '<table class="t" style="margin-top:6px"><thead><tr><th style="width:210px">' + (hasEvtRow ? rq : '') + 'Event Name</th>'
     + '<th class="ct" style="width:150px">' + rq + (a === 'cps' ? 'Settlement Rate' : 'Adv Real Price') + '</th>'
-    + '<th class="ct" style="width:150px">' + (hasEvtRow ? rq : '') + '3s Match Type</th>'
-    + '<th class="ct" style="width:150px">' + (hasEvtRow ? rq : '') + '3s Attri Windows</th>'
+    + '<th class="ct" style="width:150px">' + (hasEvtRow ? rq : '') + 'Match Type</th>'
+    + '<th class="ct" style="width:150px">' + (hasEvtRow ? rq : '') + 'Attribution Windows</th>'
     + (showDel ? '<th class="ct" style="width:60px">Delete</th>' : '') + '</tr></thead><tbody>'
     + (advShownRows().length ? advShownRows().map((e) => {
         const i = s.adv_events.indexOf(e);
