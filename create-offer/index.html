@@ -172,7 +172,7 @@ const SECS = [
   { k: 'settle',     name: 'Settlement Info',          note: 'Adv / Channel settlement split' },
   { k: 'cap',        name: 'Cap Info',                 note: 'Per-item OPEN switch' },
   { k: 'target',     name: 'Target Info',              note: 'Quick geo select + lazy region / city loading' },
-  { k: 'tracking',   name: 'Tracking Info',            note: 'Generate from Adv Link + parsing', nw: 1 },
+  { k: 'tracking',   name: 'Tracking Info',            note: 'Generate from Adv Link + parsing' },
   { k: 'creative',   name: 'Creative Info',            note: 'Relaxed checks + auto-crop' },
   { k: 'integration',name: 'Integration Info',         note: 'Auto-S2S click cap + cross-offer BT' },
 ];
@@ -355,7 +355,18 @@ function reqParams() {
   const base = (r.required || []).map((x) => Object.assign({}, x));
   /* engaged click / engaged view 的 clickid 取 extend_clickid */
   if (ext.clickid) base.forEach((x) => { if (x.k === 'clickid') x.v = ext.clickid; });
-  return base.concat(ext.extra || []);
+  /* 弹窗里手改过的目标值优先 */
+  const ov = (t.param_override || {})[t.third_party + '|' + t.track_link_type] || {};
+  return base.concat(ext.extra || []).map((x) => (ov[x.k] == null ? x : Object.assign({}, x, { v: ov[x.k] })));
+}
+/* 记下手改的目标值：按 Third Party + Track Link Type 分开存，切换组合不互相干扰 */
+function setParamTarget(k, v) {
+  const t = form.tracking;
+  const key = t.third_party + '|' + t.track_link_type;
+  t.param_override = t.param_override || {};
+  t.param_override[key] = t.param_override[key] || {};
+  t.param_override[key][k] = v;
+  openGenerate();
 }
 /* 该组合要求的域名：link type 上有定义就用它，否则回落到 MMP 的默认 click / view host */
 function wantHostOf(kind) {
@@ -475,7 +486,9 @@ const form = {
     },
     rand_custom: [],
     /* Add adjust event：仅 Third Party=Adjust 时展示，每行构建一条 event callback */
-    adj_events: [{ token:'', name:'' }] } ,
+    adj_events: [{ token:'', name:'' }],
+    /* 弹窗里手改过的参数目标值：{ 'appsflyer|cta': { af_click_lookback:'14d' } } */
+    param_override: {} } ,
   /* 自动对接：默认接入；渠道固定 mobpower_api_pub 仅展示，两个 cap 可编辑后带入对接
      cap 默认值文档标注「待确认」，这里先给演示值 */
   integration: { auto_channel:1, auto_channel_name:'mobpower_api_pub', click_cap:50000, channel_cap:20000 },
@@ -989,9 +1002,9 @@ function geoSelector() {
 
   let h = '<div class="geo3" style="grid-template-columns:270px 1fr 1.15fr">';
 
-  /* ---- ① Geo：勾选即 Target Geo，点击行下钻并加载 region ---- */
+  /* ---- Geo：勾选即 Target Geo，点击行下钻并加载 region ---- */
   const clist = COUNTRY_LIST.filter(([c, n]) => !qc || c.toLowerCase().includes(qc) || n.toLowerCase().includes(qc));
-  h += '<div><div class="ch"><span>① Geo</span></div>'
+  h += '<div><div class="ch"><span>Geo</span></div>'
     + '<input class="srch" placeholder="Search country code or name" value="' + esc(g3.qCountry) + '" oninput="g3.qCountry=this.value;render()">'
     + '<div class="cb">'
     + (clist.length ? clist.map(([c, n]) => {
@@ -1004,11 +1017,11 @@ function geoSelector() {
       }).join('') : '<div class="gi gray">No matching country</div>')
     + '</div></div>';
 
-  /* ---- ② Region：点国家才加载，加载即全选；点击行下钻并加载 city ---- */
+  /* ---- Region：点国家才加载，加载即全选；点击行下钻并加载 city ---- */
   const rs = regionsOf(cc);
   const regs = rs.filter((r) => !qr || r.name.includes(qr));
   const loadedR = !!t.loadedR[cc];
-  h += '<div><div class="ch"><span>② Region</span>'
+  h += '<div><div class="ch"><span>Region</span>'
     /* 评审反馈：region 选择器右上角单独一个开关 */
     + '<label class="chk" style="margin:0;font-size:11px;white-space:nowrap" title="取消B类渠道Region和City定向限制">'
     + '<input type="checkbox" ' + (t.cancel_b_limit ? 'checked' : '')
@@ -1030,12 +1043,12 @@ function geoSelector() {
     }).join('');
   h += '</div></div>';
 
-  /* ---- ③ City：最低层级，只勾选不展示子层级情况 ---- */
+  /* ---- City：最低层级，只勾选不展示子层级情况 ---- */
   if (curR && !t.loadedC[cc + '|' + curR.rid]) loadCities(cc, curR.rid);
   const loadedC = !!curR;
   const cities = curR ? curR.cities.filter((x) => !qy || x.name.includes(qy)) : [];
   const picked = curR ? (m[curR.rid] === 'all' ? curR.cities.map((x) => x.id) : (m[curR.rid] || [])) : [];
-  h += '<div><div class="ch"><span>③ City</span>'
+  h += '<div><div class="ch"><span>City</span>'
     /* 评审反馈：city 选择器右上角单独一个开关 */
     + '<label class="chk" style="margin:0;font-size:11px;white-space:nowrap" title="开启Region和City定向限制，对点击进行过滤">'
     + '<input type="checkbox" ' + (t.geo_click_filter ? 'checked' : '')
@@ -1049,7 +1062,7 @@ function geoSelector() {
     h += cities.map((x) => '<div class="gi"><label class="chk" style="margin:0;flex:1">'
       + '<input type="checkbox" ' + (picked.includes(x.id) ? 'checked' : '') + ' onchange="pickCity(\'' + cc + '\',\'' + curR.rid + '\',\'' + x.id + '\',this.checked)">'
       + esc(x.name) + '</label><span class="mt mono gray">' + x.id + '</span></div>').join('');
-    h += '<div class="gi gray small">Prototype ships ' + curR.cities.length + ' sample cities of the ' + curR.total + ' in this region</div>';
+
   }
   h += '</div></div>';
 
@@ -1258,7 +1271,6 @@ function paramPlanTable() {
   const cur = {};
   if (p.ok) (p.params || []).forEach((x) => { cur[x.k] = x.v; });
   const list = reqParams().filter((x) => !x.os || x.os === primaryOS());
-  const host = wantHostOf('click');
   const plan = list.map((x) => {
     const have = Object.prototype.hasOwnProperty.call(cur, x.k);
     /* mode=fill 的参数只要存在就不动；其余要求值与目标一致 */
@@ -1266,19 +1278,15 @@ function paramPlanTable() {
     if (have) act = (x.mode === 'fill' || cur[x.k] === x.v) ? 'keep' : 'replace';
     return { k:x.k, v:x.v, act:act, now: have ? cur[x.k] : '' };
   });
-  const nAdd = plan.filter((x) => x.act === 'add').length;
-  const nRep = plan.filter((x) => x.act === 'replace').length;
   const badge = { add:'<span class="tag o">Add</span>', replace:'<span class="tag o">Replace</span>', keep:'<span class="tag g">Keep</span>' };
-  return '<div class="sec"><div class="sh">Parameters to Complete / Replace'
-    + '<span class="small gray" style="font-weight:400">' + MMPS[t.third_party] + ' + ' + (trackTypes()[t.track_link_type] || t.track_link_type)
-    + '：' + nAdd + ' add / ' + nRep + ' replace / ' + (plan.length - nAdd - nRep) + ' keep</span></div>'
+  return '<div class="sec"><div class="sh">Parameters to Complete / Replace</div>'
     + '<div class="sb" style="padding:0">'
-    + (host ? '<div class="tip">Host must be <span class="mono">' + esc(host) + '</span>'
-        + (p.ok && p.host && p.host !== host ? '，当前 Adv Link 是 <span class="mono">' + esc(p.host) + '</span>，生成时会替换' : '') + '</div>' : '')
     + '<table class="t"><thead><tr><th style="width:190px">Parameter</th><th>Target Value</th>'
     + '<th style="width:88px" class="ct">Action</th></tr></thead><tbody>'
     + plan.map((x) => '<tr><td class="mono small">' + esc(x.k) + '</td>'
-        + '<td class="mono small brk">' + esc(x.v.length > 150 ? x.v.slice(0, 150) + '…' : x.v)
+        /* Target Value 可直接改，改动按参数名记在 param_override 里，生成时以改后的值为准 */
+        + '<td><input type="text" class="mono" value="' + esc(x.v) + '"'
+        + ' onchange="setParamTarget(\'' + esc(x.k) + '\',this.value)">'
         + (x.act === 'replace' ? '<div class="small gray">当前：' + esc(String(x.now).slice(0, 60)) + '</div>' : '')
         + '</td><td class="ct">' + badge[x.act] + '</td></tr>').join('')
     + '</tbody></table></div></div>';
@@ -1683,18 +1691,17 @@ function cardBasic() {
   const nDup = nameDup(b.offer_name), uDup = uuidDup(b.offer_uuid);
   let h = cardHead('basic', 'Basic Info');
 
-  /* Offer Name 与 Offer UUID 两列并排，中间一列放双向转换按钮 */
-  h += '<div class="g2" style="grid-template-columns:1.16fr 104px 1fr">'
-    + '<div class="fi">' + L('Offer Name', 1) + '<div class="c">'
-    + inp('basic.offer_name', b.offer_name, { ph:'按需求命名，一般大写英文' })
+  /* Offer Name 与 Offer UUID 两列并排，列宽与下一行一致，保证 Offer UUID 与 Budget type 同一起点
+     双向转换按钮收进 Offer Name 字段内部，不单独占一列 */
+  h += '<div class="g2">'
+    + '<div class="fi">' + L('Offer Name', 1) + '<div class="c"><div class="row">'
+    + '<span style="flex:1">' + inp('basic.offer_name', b.offer_name, { ph:'按需求命名，一般大写英文' }) + '</span>'
+    + '<button class="btn sm" style="white-space:nowrap" title="Offer Name → UUID：大写字母转小写、其余字符转下划线；只填了 UUID 时反推 Offer Name"'
+    + ' onclick="autoNameUuid()">Auto-generated</button>'
     + ii('Globally unique, usually uppercase; differs from Offer UUID only in case and separators')
+    + '</div>'
     + (nDup ? '<div class="tip err">Offer Name already exists</div>' : '')
     + '</div></div>'
-    /* 两字段之间的转换入口：name → uuid 大写转小写、非字母数字转下划线；uuid → name 反推 */
-    + '<div style="display:flex;flex-direction:column;gap:4px;align-items:stretch;padding-top:2px">'
-    + '<button class="btn sm" title="Offer Name → UUID：大写字母转小写，其余字符转下划线" onclick="syncUuid()">Name → UUID</button>'
-    + '<button class="btn sm" title="Offer UUID → Offer Name：下划线转空格并转大写" onclick="syncName()">UUID → Name</button>'
-    + '</div>'
     + '<div class="fi">' + L('Offer UUID', 1) + '<div class="c">'
     + inp('basic.offer_uuid', b.offer_uuid, { cls:'mono', ph:'offer唯一标识，按需求命名，一般小写英文' })
     + ii('Globally unique identifier used to look up the offer')
@@ -1816,8 +1823,7 @@ function cardSettle() {
      文档只给了截图没给控件描述，这里按字段名推测：开关 + 最低毛利率 + 不管控渠道名单 */
   h += '<div class="row" style="margin-top:12px">'
     + '<button class="btn sm" onclick="openMargin=!openMargin;render()">'
-    + (openMargin ? 'Hide Margin-control Details ▴' : 'Show Margin-control Details ▾') + '</button>'
-    + '<span class="small gray">按截图推测的占位结构，待产品确认</span></div>'
+    + (openMargin ? 'Hide Margin-control Details ▴' : 'Show Margin-control Details ▾') + '</button></div>'
     + (openMargin
       ? '<div class="sec" style="margin-top:8px"><div class="sb">'
         + '<div class="fi">' + L('margin control', 1) + '<div class="c"><div class="row">'
@@ -2094,7 +2100,7 @@ function paramTable(kind, p) {
       }).join('')
     + '</tbody></table></div></div>'
     + '<div class="row" style="margin-top:8px"><button class="btn sm" onclick="addParam(\'' + kind + '\')">+ Add Parameter</button>'
-    + '<span class="small gray">' + p.params.length + ' parameters parsed, in link order</span></div>';
+    + '</div>';
   return h;
 }
 /* Async Flow 三件套：勾 NO 时下面两个字段整体隐藏，勾 YES 才展开 */
@@ -2258,7 +2264,7 @@ function renderNav() {
   $('#nav').innerHTML = '<div class="nt">Modules</div>' + SECS.map((s) => {
     const b = navBadge(s.k);
     return '<a class="ni' + (curSec === s.k ? ' on' : '') + '" onclick="goSec(\'' + s.k + '\')">'
-      + esc(s.name) + (s.nw ? ' <span class="tag nw">New</span>' : '')
+      + esc(s.name)
       + '<span class="bd ' + b.cls + '">' + esc(b.t) + '</span></a>';
   }).join('');
 }
