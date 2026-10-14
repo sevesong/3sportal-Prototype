@@ -57,6 +57,8 @@ table.t input,table.t select{padding:3px 7px;font-size:12px}
 .btn.sm{padding:3px 9px;font-size:12px}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .btn.lnk{border:0;background:transparent;color:#409eff;padding:2px 4px}
+.btn.lt{background:#ecf5ff;border-color:#b3d8ff;color:#409eff}
+.btn.lt:hover{background:#d9ecff;border-color:#409eff;color:#409eff}
 .opv{display:flex;gap:10px;font-size:12px}
 
 .sw{display:inline-block;width:36px;height:19px;border-radius:10px;background:#dcdfe6;position:relative;cursor:pointer;flex:0 0 auto}
@@ -1696,15 +1698,20 @@ function cardBasic() {
   h += '<div class="g2">'
     + '<div class="fi">' + L('Offer Name', 1) + '<div class="c"><div class="row">'
     + '<span style="flex:1">' + inp('basic.offer_name', b.offer_name, { ph:'按需求命名，一般大写英文' }) + '</span>'
-    + '<button class="btn sm" style="white-space:nowrap" title="Offer Name → UUID：大写字母转小写、其余字符转下划线；只填了 UUID 时反推 Offer Name"'
-    + ' onclick="autoNameUuid()">Auto-generated</button>'
+    /* 由对侧字段反推本字段：Offer Name 侧的 Auto 从 UUID 推出 Name */
+    + '<button class="btn sm lt" style="white-space:nowrap" title="由 Offer UUID 反推 Offer Name：下划线转空格并转大写"'
+    + ' onclick="syncName()">Auto</button>'
     + ii('Globally unique, usually uppercase; differs from Offer UUID only in case and separators')
     + '</div>'
     + (nDup ? '<div class="tip err">Offer Name already exists</div>' : '')
     + '</div></div>'
-    + '<div class="fi">' + L('Offer UUID', 1) + '<div class="c">'
-    + inp('basic.offer_uuid', b.offer_uuid, { cls:'mono', ph:'offer唯一标识，按需求命名，一般小写英文' })
+    + '<div class="fi">' + L('Offer UUID', 1) + '<div class="c"><div class="row">'
+    + '<span style="flex:1">' + inp('basic.offer_uuid', b.offer_uuid, { cls:'mono', ph:'offer唯一标识，按需求命名，一般小写英文' }) + '</span>'
+    /* Offer UUID 侧的 Auto 从 Name 生成 UUID：大写转小写、其余字符转下划线 */
+    + '<button class="btn sm lt" style="white-space:nowrap" title="由 Offer Name 生成 Offer UUID：大写字母转小写、其余字符转下划线"'
+    + ' onclick="syncUuid()">Auto</button>'
     + ii('Globally unique identifier used to look up the offer')
+    + '</div>'
     + (uDup ? '<div class="tip err">Offer UUID already exists</div>' : '')
     + '</div></div>'
     + '</div>'
