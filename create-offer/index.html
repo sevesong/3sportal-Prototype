@@ -154,8 +154,8 @@ textarea.mono{font-family:Menlo,Consolas,monospace;font-size:12px;line-height:1.
   <a class="btn sm" style="margin-left:auto" onclick="toast('Prototype only: back to the old Create Offer page')">Old Page</a>
 </div>
 <div class="wrap">
-  <div class="main" id="main"></div>
   <div class="nav" id="nav"></div>
+  <div class="main" id="main"></div>
 </div>
 <div class="foot" id="foot"></div>
 <div id="layer"></div>
@@ -229,47 +229,141 @@ const CITY_ALIAS = [
 
 
 /* ---------- Tracking Link 宏表 ---------- */
+/* 支持的占位符 / 宏：严格取自需求文档 3.8.3 marco 弹窗的清单。
+   参数值只允许用这里的宏或写死值，其余一律在保存时拦截 */
 const MACROS = [
-  { m:'{@info.click_id@}',        d:'3S 点击 ID，MMP 归因回传必须带回',       s:'c8f3a91b2d47', real:0 },
-  { m:'{@info.offer_id@}',        d:'Offer ID',                               s:'3119805',      real:0 },
-  { m:'{@info.offer_uuid@}',      d:'Offer UUID',                             s:'offer_test',   real:0 },
-  { m:'{@info.channel_id@}',      d:'渠道 ID，对应 MMP 的 site id',           s:'chn_a1b2c3',   real:0 },
-  { m:'{@info.sub_id@}',          d:'渠道 SubID（Mob 号）',                   s:'mob2da6aa35c5',real:0 },
-  { m:'{@info.country@}',         d:'点击所在国家，大写 ISO 两位',             s:'BR',           real:0 },
-  { m:'{@info.city@}',            d:'点击所在城市',                           s:'xalapa',       real:0 },
-  { m:'{@info.gaid@}',            d:'Android 广告 ID',                        s:'38400000-8cf0-11bd-b23e-10b96e40000d', real:0 },
-  { m:'{@info.idfa@}',            d:'iOS 广告标识符',                         s:'AEBE52E7-03EE-455A-B3C4-E57283966239', real:0 },
-  { m:'{@info.ip@}',              d:'设备 IP',                                s:'103.28.114.9', real:0 },
-  { m:'{@info.ua@}',              d:'User-Agent',                             s:'Mozilla/5.0 (Linux; Android 13)', real:0 },
-  { m:'{@info.mb_package_v3()@}', d:'透传包名，需 Delivery 开启包名透传',      s:'com.neptune.domino', real:1 },
-  { m:'{@info.theme_name3@}',     d:'透传素材，需 Delivery 开启素材透传',      s:'theme_0731_a', real:1 },
-  { m:'{@info.creative_name3@}',  d:'透传素材名（与 theme_name3 二选一）',     s:'cr_0731_a',    real:1 },
-  { m:'{@info.change_pid()@}',    d:'更换 PID，配合自定义规则「更换PID」动作', s:'pid_0912',     real:1 },
-  { m:'{@info.random_pid()@}',    d:'随机取 PID，配合「禁用PID」动作',         s:'pid_rand_07',  real:1 },
-  { m:'{@info.change_c()@}',      d:'更换 C 参为 yyyymmddhh',                 s:'2026091916',   real:1 },
+  { m:'{@info.clickid@}',          d:'3s 的 clickid',                                   s:'c8f3a91b2d47' },
+  { m:'{@info.extend_clickid()@}', d:'配置非 mv pid 时 clickid 使用此 marco',            s:'c8f3a91b2d47_ext' },
+  { m:'{@info.extend_clickid@}',   d:'扩展 clickid（在系统 clickid 上附加扩展信息）',      s:'c8f3a91b2d47_ext' },
+  { m:'{@info.query_idfa()@}',     d:'渠道上报的设备 id',                                s:'AEBE52E7-03EE-455A-B3C4-E57283966239' },
+  { m:'{@info.query_idfa ()@}',    d:'同上，括号前多一个空格的写法，文档建议统一',          s:'AEBE52E7-03EE-455A-B3C4-E57283966239' },
+  { m:'{@info.sub_channel@}',      d:'Delivery 功能中设置的 mob 号',                      s:'mob2da6aa35c5' },
+  { m:'{@info.campaign.name@}',    d:'当前 offer uuid',                                  s:'domino_star_and_13' },
+  { m:'{@info.args.campaign_id@}', d:'当前 offer id',                                    s:'3119805' },
+  { m:'{@info.channel_id@}',       d:'渠道 id',                                          s:'chn_a1b2c3' },
+  { m:'{@info.subid@}',            d:'渠道上报的 subid',                                 s:'sub_7781' },
+  { m:'{@info.args.adv_install_real_price@}', d:'adv settlement type=install 时，取 offer 的 adv install real price', s:'0.7' },
+  { m:'{@info.ip@}',               d:'设备 ip',                                          s:'103.28.114.9' },
+  { m:'{@info.country@}',          d:'点击 geo',                                         s:'br' },
+  { m:'{@info.country.toUpperCase()@}', d:'国家代码大写',                                s:'BR' },
+  { m:'{@info.ua@}',               d:'User Agent 原值（未编码）',                         s:'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)' },
+  { m:'{@encodeURIComponent(info.ua)@}', d:'User agent（URL 编码后）',                   s:'Mozilla%2F5.0%20(iPhone...)' },
+  { m:'{@info.args.ua_os_version@}', d:'ua 里的 os 版本',                                s:'17.0.3' },
+  { m:'{@info.query.mb_os_version@}', d:'版本号',                                        s:'13' },
+  { m:'{@info.query_lang()@}',     d:'系统语言 en-US',                                   s:'en-US' },
+  { m:'{@info.creative_name3@}',   d:'需在 Delivery 功能中开启透传，取 offer 的 creative name', s:'cr_0731_a', real:1 },
+  { m:'{@info.creative_name@}',    d:'素材名称（配合素材透传功能使用）',                   s:'cr_0731_a', real:1 },
+  { m:'{@info.mb_package_v3()@}',  d:'需开启透传功能，透传包名',                          s:'com.neptune.domino', real:1 },
+  { m:'{@info.theme_name3@}',      d:'透传包名',                                         s:'theme_0731_a', real:1 },
+  { m:'{@info.query.mb_package@}', d:'渠道上报的包名',                                   s:'com.neptune.domino' },
+  { m:'{@info.query.aid@}',        d:'从 URL query 参数获取 aid（Android 设备标识）',      s:'a1b2c3d4e5f6' },
+  { m:'{@info.args.idfv@}',        d:'idfv',                                             s:'C9A1E8F0-1234-4A5B-8C7D-0E1F2A3B4C5D' },
+  { m:'{@info.query.mb_idfv@}',    d:'从 URL query 获取 mb_idfv（iOS IDFV 设备标识）',     s:'C9A1E8F0-1234-4A5B-8C7D-0E1F2A3B4C5D' },
+  { m:'{@info.args.imei@}',        d:'IMEI 设备号',                                      s:'352099001761481' },
+  { m:'{@info.appsflyerid@}',      d:'AppsFlyer 用户唯一标识（AppsFlyer ID）',             s:'1690000000000-1234567' },
+  { m:'{@info.change_c()@}',       d:'需开启 Delivery Strategy Management 功能中相关设置',  s:'2026091916', real:1 },
+  { m:'{@info.change_c_ymd()@}',   d:'需开启 Delivery Strategy Management 功能中相关设置',  s:'20260919', real:1 },
+  { m:'{@info.change_pid()@}',     d:'需开启 Delivery Strategy Management 功能中相关设置',  s:'pid_0912', real:1 },
+  { m:'{@info.random_pid()@}',     d:'随机 PID，用于「禁用 PID」动作时随机取用列表中的 PID 上报', s:'pid_rand_07', real:1 },
+  { m:'{@info.random_pid ()@}',    d:'同上，括号前多一个空格的写法，文档建议统一',          s:'pid_rand_07', real:1 },
+  { m:'{@info.query_arg_md5("mb_tagid")@}', d:'对 URL 参数 mb_tagid 的值做 MD5 加密后传出', s:'9e107d9d372bb682' },
+  { m:'{@info.query_arg("bid_rsp_id")@}',   d:'从 URL 参数获取 bid_rsp_id（竞价响应 ID）',  s:'bid_88123' },
+  { m:'{@encodeURIComponent(info.query.mb_creative?info.query.mb_creative:\'\')@}', d:'取 URL 参数 mb_creative（素材名），为空则传空字符串，并做 URL 编码', s:'cr_0731_a' },
+  { m:'{@encodeURIComponent(info.ua_detail.os.toString().split(\' \')[1]?info.ua_detail.os.toString().split(\' \')[1]:\'\')@}', d:'从 UA 解析 OS 版本号，空则传空字符串，并做 URL 编码', s:'17.0.3' },
+  { m:'__e__f__fp__',              d:'外部渠道传入的指纹 / 占位参数（非 3S 内置宏，透传外部原值）', s:'fp_ab12cd34' },
 ];
 const MACRO_SET = new Set(MACROS.map(x => x.m));
+
+/* Adjust 三个 callback 取值模板（文档 3.8.2 第 12 节），生成后统一追加后缀 */
+const ADJ_CB_SUFFIX = '%26google_app_set_id%3D%7Bidfv%7C%7Cgoogle_app_set_id%7D%26user_agent%3D{user_agent}';
+const ADJ_CB = {
+  install:  'mobvista_install%26mobvista_campuuid%3D{@info.campaign.name@}%26mobvista_clickid%3D{@info.clickid@}'
+    + '%26mobvista_tag%3Dnew_adjust_postback%26mb_mcc%3D{mcc}%26mb_mnc%3D{mnc}%26mb_isp%3D{isp}' + ADJ_CB_SUFFIX,
+  session:  'mobvista_event%26mobvista_campuuid%3D{@info.campaign.name@}%26mobvista_clickid%3D{@info.clickid@}'
+    + '%26event_name%3Dsession%26mb_sid%3D{@info.sub_channel@}%26event_time%3d%7bcreated_at%7d' + ADJ_CB_SUFFIX,
+  rejected: 'mobvista_event%26mobvista_campuuid%3D{@info.campaign.name@}%26mobvista_clickid%3D{@info.clickid@}'
+    + '%26event_name%3Drejected_reason%26event_value%3D%7Brejection_reason%7D%26mb_sid%3D{@info.sub_channel@}' + ADJ_CB_SUFFIX,
+};
+/* 每个 Add adjust event 行构建一条 event callback（文档：event_token 与 event_name 必须同时填写） */
+const adjEventParam = (token, isGo) => (isGo ? 'adj_event_callback_' : 'event_callback_') + token;
+const adjEventValue = (name) => 'mobvista_event%26mobvista_campuuid%3D{@info.campaign.name@}'
+  + '%26mobvista_clickid%3D{@info.clickid@}%26event_name%3D' + name
+  + '%26mb_sid%3D{@info.sub_channel@}%26event_time%3d%7bcreated_at%7d'
+  + '%26event_value%3D{revenue_usd}%26is_reattributed%3D{is_reattributed}' + ADJ_CB_SUFFIX;
 
 /* MMP 校验规则。AppsFlyer 一档依据 Moloco 公开的 AF 链接校验规则 + 3S 已知取值 */
 const MMP_RULES = {
   appsflyer: {
     click_host: 'app.appsflyer.com', view_host: 'impression.appsflyer.com', path_rule: 'bundle', agency_param: 'af_prt',
     required: [
-      { k:'pid', v:'mobvista_int', why:'Media Source, the fixed value 3S uses on AF' },
-      { k:'clickid', v:'{@info.click_id@}', why:'AF posts attribution back with it; missing it breaks attribution' },
-      { k:'c', v:'{name}', why:'Campaign name, an AF reporting dimension' },
-      { k:'af_siteid', v:'{@info.channel_id@}', why:'Sub-channel dimension; without it AF reports cannot break down by channel' },
-      { k:'af_click_lookback', v:'7d', why:'Click attribution window' },
-      { k:'advertising_id', v:'{@info.gaid@}', os:'android', why:'Android device identifier' },
-      { k:'idfa', v:'{@info.idfa@}', os:'ios', why:'iOS device identifier' },
+      { k:'pid', v:'mobvista_int', mode:'fill', why:'Media Source, the fixed value 3S uses on AF' },
+      { k:'clickid', v:'{@info.clickid@}', why:'AF posts attribution back with it; missing it breaks attribution' },
+      { k:'c', v:'{name}', mode:'fill', why:'Campaign name, an AF reporting dimension' },
+      { k:'af_siteid', v:'{@info.sub_channel@}', why:'Sub-channel dimension; without it AF reports cannot break down by channel' },
+      { k:'af_c_id', v:'{@info.args.campaign_id@}', why:'Campaign id dimension' },
+      { k:'af_ad_id', v:'{@info.args.campaign_id@}', why:'Creative id dimension' },
+      { k:'advertising_id', v:'{@info.query_idfa()@}', os:'android', why:'Android device identifier' },
+      { k:'idfa', v:'{@info.query_idfa()@}', os:'ios', why:'iOS device identifier' },
     ],
-    optional: [{k:'af_ip',v:'{@info.ip@}'},{k:'af_ua',v:'{@info.ua@}'},{k:'af_sub1',v:'{@info.sub_id@}'},{k:'af_prt',v:''}],
+    optional: [{k:'af_ip',v:'{@info.ip@}'},{k:'af_ua',v:'{@info.ua@}'},{k:'af_sub1',v:'{@info.subid@}'},{k:'af_prt',v:''}],
+    /* 各 Track Link Type 的域名与专属参数（文档 3.8.2 每个组合一张表）
+       归因窗口按 AppsFlyer 官方文档补：点击类用 af_click_lookback，展示类用 af_viewthrough_lookback */
+    byType: {
+      cta:  { host:'app.appsflyer.com',
+              extra:[{ k:'af_click_lookback', v:'7d', why:'Click-through attribution window (AF default 7d, range 1-23h / 1-30d)' }] },
+      vta:  { host:'impression.appsflyer.com',
+              extra:[{ k:'af_viewthrough_lookback', v:'24h', why:'View-through attribution window (AF default 24h, range 1-24h)' }] },
+      ctv:  { extra:[{ k:'af_xplatform', v:'true', why:'Cross-platform attribution switch' },
+                     { k:'af_xplatform_vt_lookback', v:'72h', why:'Cross-platform view-through window' }] },
+      engaged_click: { host:'app.appsflyer.com', clickid:'{@info.extend_clickid()@}',
+              extra:[{ k:'af_engagement_type', v:'engaged_click', why:'Engagement type' },
+                     { k:'af_click_lookback', v:'7d', why:'Click-through attribution window' }] },
+      engaged_view:  { host:'app.appsflyer.com', clickid:'{@info.extend_clickid()@}',
+              extra:[{ k:'af_engagement_type', v:'engaged_view', why:'Engagement type' },
+                     { k:'af_viewthrough_lookback', v:'24h', why:'View-through attribution window' }] },
+    },
   },
-  adjust:   { click_host:'app.adjust.com', view_host:'view.adjust.com', path_rule:'token', required:[], optional:[] },
+  /* Adjust：参数与三个 callback 模板取自文档 3.8.2 第 6/7/8 节 */
+  adjust:   { click_host:'app.adjust.com', view_host:'view.adjust.com', path_rule:'token',
+    required: [
+      { k:'campaign', v:'{name}', mode:'fill', why:'Campaign name' },
+      { k:'adgroup', v:'{@info.sub_channel@}', why:'Sub-channel (mob id)' },
+      { k:'idfa', v:'{@info.query_idfa()@}', os:'ios', why:'iOS device identifier' },
+      { k:'gps_adid', v:'{@info.query_idfa()@}', os:'android', why:'Android device identifier' },
+      { k:'install_callback', v:ADJ_CB.install, why:'Install postback template (template 1)' },
+      { k:'session_callback', v:ADJ_CB.session, why:'Session postback template (template 2)' },
+      { k:'rejected_install_callback', v:ADJ_CB.rejected, why:'Rejected install postback template (template 3)' },
+    ],
+    optional: [],
+    byType: {
+      cta: { host:'app.adjust.com' },
+      vta: { host:'view.adjust.com' },
+      ctv: { host:'view.adjust.com',
+             extra:[{ k:'cross_device_tracking', v:'1', why:'Cross-device tracking switch' },
+                    { k:'ip_address', v:'{@info.ip@}', why:'Device ip for cross-device matching' }] },
+    },
+  },
   branch:   { click_host:'app.link',       view_host:'app.link',        path_rule:'token', required:[], optional:[] },
   singular: { click_host:'sng.link',       view_host:'sng.link',        path_rule:'token', required:[], optional:[] },
   none:     { click_host:'',               view_host:'',                path_rule:'any',   required:[], optional:[] },
 };
+/* 当前 Third Party + Track Link Type 组合下该补全 / 替换的参数表（文档 3.8.2 每个组合一张表）
+   = 该 MMP 的基础必传参数 + 该 link type 的专属参数（含归因窗口） */
+function reqParams() {
+  const t = form.tracking, r = MMP_RULES[t.third_party] || {};
+  const ext = (r.byType || {})[t.track_link_type] || {};
+  const base = (r.required || []).map((x) => Object.assign({}, x));
+  /* engaged click / engaged view 的 clickid 取 extend_clickid */
+  if (ext.clickid) base.forEach((x) => { if (x.k === 'clickid') x.v = ext.clickid; });
+  return base.concat(ext.extra || []);
+}
+/* 该组合要求的域名：link type 上有定义就用它，否则回落到 MMP 的默认 click / view host */
+function wantHostOf(kind) {
+  const t = form.tracking, r = MMP_RULES[t.third_party] || {};
+  const ext = (r.byType || {})[t.track_link_type] || {};
+  if (kind === 'view') return r.view_host;
+  return ext.host || r.click_host;
+}
 /* 参数含义：取自各 MMP 官方文档的最简释义，用于「解析与识别」表的含义列 */
 const PARAM_DESC = {
   pid:'媒体渠道标识（Media Source）', c:'广告系列名称（Campaign）', af_c_id:'广告系列 ID',
@@ -351,6 +445,8 @@ const form = {
     /* Platform / Device 都是多选；真实新建页初始为空，这里给演示值 */
     platform: ['android'], platform_other: '', device: ['all'],
     version_from: '8.0', version_to: '',
+    /* 评审反馈新增的两个定向限制开关，分别置于 Region / City 选择器右上角 */
+    cancel_b_limit: 0, geo_click_filter: 0,
     /* 页面不展示、按默认值提交：版本校验开关与流量类型 */
     block_wrong_os: 1,
     traffic_source: ['non-incent', 'no adult'],
@@ -364,7 +460,9 @@ const form = {
   tracking: { track_link_domain:'track.mobvista.com', adv_impression_link:'',
     /* 手绘稿新增：先贴上游渠道给的 Adv Link，再点 Generate 出我方 tracking link */
     adv_link:'https://app.appsflyer.com/com.neptune.domino?pid=mobvista_int&af_prt=Mobvista',
-    tracking_link:'https://app.appsflyer.com/com.neptune.domino?pid=mobvista_int&c={name}&advertising_id={@info.gaid@}&af_siteid={@info.site_id@}',
+    tracking_link:'https://app.appsflyer.com/com.neptune.domino?pid=mobvista_int&c={name}&clickid={@info.clickid@}'
+      + '&advertising_id={@info.query_idfa()@}&af_siteid={@info.sub_channel@}&af_c_id={@info.args.campaign_id@}'
+      + '&af_ad_id={@info.args.campaign_id@}&af_click_lookback=7d&af_prt=Mobvista',
     track_way:'s2s', third_party:'appsflyer', track_link_type:'cta', link_type:'normal',
     async_flow:0, async_channel_whitelist:'', store_link:'', is_agency:1, af_prt:'Mobvista',
     /* Math Random：默认四个维度 + 可自定义行，value 为英文逗号分隔的候选值串 */
@@ -375,7 +473,9 @@ const form = {
       af_adset: { raw:'' },
       c:        { raw:'' },
     },
-    rand_custom: [] } ,
+    rand_custom: [],
+    /* Add adjust event：仅 Third Party=Adjust 时展示，每行构建一条 event callback */
+    adj_events: [{ token:'', name:'' }] } ,
   /* 自动对接：默认接入；渠道固定 mobpower_api_pub 仅展示，两个 cap 可编辑后带入对接
      cap 默认值文档标注「待确认」，这里先给演示值 */
   integration: { auto_channel:1, auto_channel_name:'mobpower_api_pub', click_cap:50000, channel_cap:20000 },
@@ -383,15 +483,23 @@ const form = {
 
 /* 变更日志：offer 维度所有模块的改动都进这里（PRD：新增 offer 维度变更日志集合） */
 const LOGS = [
-  { t:'2026-09-22 17:40', who:'yongqiang.song', sec:'Settlement Info', msg:'Channel Set Type: CPE → CPI (editable after creation, no need to rebuild the offer)' },
-  { t:'2026-09-22 17:36', who:'yongqiang.song', sec:'Basic Info', msg:'Offer UUID generated from Offer Name: domino_star_and_13' },
+  { t:'2026-09-22 17:40:12', who:'yongqiang.song', sec:'Settlement Info', field:'Channel Set Type', before:'CPE', after:'CPI' },
+  { t:'2026-09-22 17:36:48', who:'yongqiang.song', sec:'Basic Info', field:'Offer UUID', before:'', after:'domino_star_and_13' },
 ];
-function pushLog(sec, msg) {
+/* 变更日志按文档 3.11 的六列记录：Time / Operator / Module / Field / Before / After */
+function pushLog(sec, field, before, after) {
   const d = new Date();
   const p = (n) => String(n).padStart(2, '0');
-  LOGS.unshift({ t: d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()),
-    who: form.basic.pm || 'me', sec, msg });
+  LOGS.unshift({
+    t: d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
+      + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()),
+    who: form.basic.pm || 'me', sec: sec, field: field,
+    before: before == null ? '' : String(before),
+    after: after == null ? '' : String(after) });
+  logPage = 0;   /* 新记录在首页，翻到别页后再产生改动时跳回 */
 }
+let logPage = 0;
+const LOG_PAGE_SIZE = 10;
 
 /* 结算口径派生值。Upstream settles on Adv Settlement Type 取，下游按 Channel Settlement Type 取，
    两边各自可能落在 install 或某个 event 上，所以统一从这里读，避免各处口径不一致 */
@@ -424,13 +532,22 @@ function syncSettle() {
     s.adv_events.push({ name:'af_purchase', real:null, match:'uniq', window:'7d' });
   syncChnEvents();
 }
+/* Channel 表的 Adv Price / Channel Payout 初始值：取该 event 在 Adv 表里的价格 * 0.8 */
+function defaultChnPrice(name) {
+  const e = form.settle.adv_events.find((x) => x.name === name);
+  if (!e || e.real == null) return null;
+  return Math.round(e.real * 0.8 * 1000) / 1000;
+}
 function syncChnEvents() {
   const s = form.settle, o = s.chn_events[0] || {};
   const name = chnEventName();
-  const keep = o.name === name;
+  /* 首次渲染与结算 event 变更时按默认公式回填；用户手工改过的值不再覆盖 */
+  const reset = o._init !== true || o.name !== name;
+  const def = reset ? defaultChnPrice(name) : null;
   s.chn_events = [{ name: name,
-    adv_price: keep ? (o.adv_price == null ? null : o.adv_price) : (o.adv_price == null ? null : o.adv_price),
-    payout: o.payout == null ? null : o.payout, note: o.note || '' }];
+    adv_price: reset ? def : o.adv_price,
+    payout: reset ? def : o.payout,
+    note: o.note || '', _init: true }];
 }
 /* 结算行：上游 / 下游各自按自己的口径认定哪一行参与结算 */
 /* Install 行是否存在：Adv=CPI 恒有；Adv=CPE 仅在 Channel=CPI 时有；Adv=CPS 没有 */
@@ -453,9 +570,11 @@ const advPriceOn = (e) => {
   if (a === 'cpe') return e.name !== 'install';
   return true;
 };
-/* Channel 表的 Adv Price / Channel Payout：上下游同口径且非 CPI 时展示 - 并置灰 */
-/* Adv Price / Channel Payout 是否可填：只有下游按 CPS 分成时不在这里填（文档场景6），其余场景都可填 */
-const chnPriceOn = () => form.settle.chn_settle_type !== 'cps';
+/* Channel 表两列各自独立判定（文档 3.5 交互场景 1-6）：
+   Adv Price   —— 上游按 CPS 分成时不在这里填，展示 - 并置灰（场景 5、6）
+   Channel Payout —— 下游按 CPS 分成时不在这里填，展示 - 并置灰（场景 6） */
+const chnAdvPriceOn = () => form.settle.adv_settle_type !== 'cps';
+const chnPayoutOn = () => form.settle.chn_settle_type !== 'cps';
 /* Channel 表 Event Name 的候选：CPE 取除 install 外的 event，CPS 取全部 */
 const chnEventOpts = () => {
   const s = form.settle;
@@ -481,7 +600,8 @@ const capVal = (o) => (o && !o.on) ? o.val : null;
 function capToggle(path, v) {
   setv(path + '.on', v ? 1 : 0);
   if (v) setv(path + '.val', null);
-  pushLog('Cap Info', path.replace('cap.', '') + ' OPEN → ' + (v ? 'on (no limit)' : 'off (limited)'));
+  pushLog('Cap Info', path.replace('cap.', '') + ' OPEN',
+    v ? 'off (limited)' : 'on (no limit)', v ? 'on (no limit)' : 'off (limited)');
   render();
 }
 
@@ -575,7 +695,8 @@ function chkBool(path, on, after) {
 }
 /* 布尔字段（改动进变更日志） */
 function chkBoolLog(path, on, sec, label) {
-  const j = (v) => 'setv(\'' + path + '\',' + v + ');pushLog(\'' + sec + '\',\'' + label + ' → ' + (v ? 'Yes' : 'No') + '\');render()';
+  const j = (v) => 'setv(\'' + path + '\',' + v + ');pushLog(\'' + sec + '\',\'' + label + '\',\''
+    + (on ? 'Yes' : 'No') + '\',\'' + (v ? 'Yes' : 'No') + '\');render()';
   return '<div class="row">'
     + '<label class="chk"><input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="' + j(1) + '">Yes</label>'
     + '<label class="chk"><input type="checkbox" ' + (on ? '' : 'checked') + ' onchange="' + j(0) + '">No</label>'
@@ -584,7 +705,8 @@ function chkBoolLog(path, on, sec, label) {
 /* 带日志的开关：Settlement / Cap 这类会影响结算的字段，改动要留痕 */
 function swlog(path, on, sec, label, tip) {
   return '<span class="sw' + (on ? ' on' : '') + '" onclick="setv(\'' + path + '\',' + (on ? 0 : 1) + ');'
-    + 'pushLog(\'' + sec + '\',\'' + label + ' → ' + (on ? 'off' : 'on') + '\');render()"></span>' + (tip ? ii(tip) : '');
+    + 'pushLog(\'' + sec + '\',\'' + label + '\',\'' + (on ? 'on' : 'off') + '\',\'' + (on ? 'off' : 'on')
+    + '\');render()"></span>' + (tip ? ii(tip) : '');
 }
 
 /* ============================================================
@@ -626,15 +748,17 @@ function syncUuid() {
     const nx = nextFree(u, EXIST_UUIDS);
     if (nx) { toast('uuid ' + u + ' already exists, bumped to ' + nx, 'warn'); u = nx; }
   }
+  const prevU = b.offer_uuid;
   b.offer_uuid = u;
-  pushLog('Basic Info', 'Offer UUID generated from Offer Name: ' + u);
+  pushLog('Basic Info', 'Offer UUID', prevU, u);
   render();
 }
 function syncName() {
   const b = form.basic;
   if (!b.offer_uuid) return toast('Fill Offer UUID first', 'warn');
+  const prevN = b.offer_name;
   b.offer_name = uuidToName(b.offer_uuid);
-  pushLog('Basic Info', 'Offer Name derived from Offer UUID: ' + b.offer_name);
+  pushLog('Basic Info', 'Offer Name', prevN, b.offer_name);
   render();
 }
 /* now：把当前时间写进开始时间，精确到秒 */
@@ -722,23 +846,20 @@ function pickCity(c, rid, id, v) {
   render();
 }
 /* ---- 右侧选中情况标签：子层级没单独取消就标全选，否则给 已选/总数 ---- */
-function cityLabel(c, rid) {
-  const m = (form.target.region[c] || {}), v = m[rid], r = regionById(c, rid);
-  if (v === undefined || !r) return '';
-  if (v === 'all') return '<span class="tag g">Whole Region</span>';
-  const n = (v || []).length;
-  if (!n) return '<span class="gray">0/' + r.cities.length + ' city</span>';
-  return '<span class="tag o">' + n + '/' + r.cities.length + ' city</span>';
-}
+/* 评审反馈：去掉 Target 模块的标签计算（whole 类标签与 N/M 计数都不要），
+   选中范围改由各层级复选框的全选 / 半选态体现 */
+function cityLabel() { return ''; }
 function regionLabel(c) {
   const t = form.target;
   if (!t.countries.includes(c)) return '';
   if (!t.loadedR[c]) return '<span class="gray">not loaded</span>';
-  const m = t.region[c] || {}, rs = regionsOf(c);
-  const picked = rs.filter((r) => m[r.rid] === 'all' || (m[r.rid] || []).length);
-  const whole = picked.length === rs.length && rs.every((r) => m[r.rid] === 'all');
-  if (whole) return '<span class="tag g">Whole Country</span>';
-  return '<span class="tag o">' + picked.length + '/' + rs.length + ' Region</span>';
+  return '';
+}
+/* 某个 region 的选择态：all = 全选、有城市 = 半选、其余 = 未选 */
+function regionCheckState(c, rid) {
+  const v = (form.target.region[c] || {})[rid];
+  if (v === 'all') return 'all';
+  return (v || []).length ? 'part' : 'none';
 }
 
 const regionsOf = (c) => ((GEO_DATA[c] || {}).regions || []);
@@ -887,18 +1008,25 @@ function geoSelector() {
   const rs = regionsOf(cc);
   const regs = rs.filter((r) => !qr || r.name.includes(qr));
   const loadedR = !!t.loadedR[cc];
-  h += '<div><div class="ch"><span>② Region</span></div>'
+  h += '<div><div class="ch"><span>② Region</span>'
+    /* 评审反馈：region 选择器右上角单独一个开关 */
+    + '<label class="chk" style="margin:0;font-size:11px;white-space:nowrap" title="取消B类渠道Region和City定向限制">'
+    + '<input type="checkbox" ' + (t.cancel_b_limit ? 'checked' : '')
+    + ' onchange="setv(\'target.cancel_b_limit\',this.checked?1:0);render()">取消B类渠道Region和City定向限制</label>'
+    + '</div>'
     + '<input class="srch" placeholder="Search region name" value="' + esc(g3.qRegion) + '" oninput="g3.qRegion=this.value;render()">'
     + '<div class="cb">';
   if (!loadedR) h += '<div class="gi gray">Click a country on the left to load its regions</div>';
   else if (!regs.length) h += '<div class="gi gray">No matching region</div>';
   else h += regs.map((r) => {
-      const on = m[r.rid] === 'all' || (m[r.rid] || []).length > 0;
+      /* 全选打勾、部分选中给半选态，取代原来的 Whole Region / N/M city 标签 */
+      const st = regionCheckState(cc, r.rid);
       return '<div class="gi' + (curR && String(curR.rid) === String(r.rid) ? ' on' : '') + '" onclick="openRegion(\'' + cc + '\',\'' + r.rid + '\')">'
         + '<label class="chk" style="margin:0;flex:1" onclick="event.stopPropagation()">'
-        + '<input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="pickRegion(\'' + cc + '\',\'' + r.rid + '\',this.checked)">'
+        + '<input type="checkbox" ' + (st !== 'none' ? 'checked' : '') + (st === 'part' ? ' data-ind="1"' : '')
+        + ' onchange="pickRegion(\'' + cc + '\',\'' + r.rid + '\',this.checked)">'
         + '<span class="nm">' + esc(r.name) + '</span></label>'
-        + '<span class="mt">' + cityLabel(cc, r.rid) + '</span></div>';
+        + '<span class="mt">' + cityLabel() + '</span></div>';
     }).join('');
   h += '</div></div>';
 
@@ -907,7 +1035,12 @@ function geoSelector() {
   const loadedC = !!curR;
   const cities = curR ? curR.cities.filter((x) => !qy || x.name.includes(qy)) : [];
   const picked = curR ? (m[curR.rid] === 'all' ? curR.cities.map((x) => x.id) : (m[curR.rid] || [])) : [];
-  h += '<div><div class="ch"><span>③ City</span></div>'
+  h += '<div><div class="ch"><span>③ City</span>'
+    /* 评审反馈：city 选择器右上角单独一个开关 */
+    + '<label class="chk" style="margin:0;font-size:11px;white-space:nowrap" title="开启Region和City定向限制，对点击进行过滤">'
+    + '<input type="checkbox" ' + (t.geo_click_filter ? 'checked' : '')
+    + ' onchange="setv(\'target.geo_click_filter\',this.checked?1:0);render()">开启Region和City定向限制，对点击进行过滤</label>'
+    + '</div>'
     + '<input class="srch" placeholder="Search city name" value="' + esc(g3.qCity) + '" oninput="g3.qCity=this.value;render()">'
     + '<div class="cb">';
   if (!curR) h += '<div class="gi gray">Click a region in the middle to load its cities</div>';
@@ -1021,7 +1154,7 @@ function autoGenerate(kind) {
   const host = kind === 'view' ? r.view_host : r.click_host;
   const path = primaryOS() === 'ios' ? ('id' + (a.app_id || '554782625')) : a.package_name;
   const params = [];
-  r.required.forEach((x) => { if (!x.os || x.os === primaryOS()) params.push({ k:x.k, v:x.v }); });
+  reqParams().forEach((x) => { if (!x.os || x.os === primaryOS()) params.push({ k:x.k, v:x.v }); });
   if (kind === 'view') {
     const i = params.findIndex((x) => x.k === 'af_click_lookback');
     if (i >= 0) params[i] = { k:'af_viewthrough_lookback', v:'1d' };
@@ -1072,23 +1205,106 @@ function openGenerate() {
     + '<div class="fi">' + L('Third Party', 1) + '<div class="c">'
     + sel('tracking.third_party', t.third_party, MMPS, { after:'fixTrackType();openGenerate();' }) + '</div></div>'
     + '<div class="fi">' + L('Track Link Type', 1) + '<div class="c">'
-    + sel('tracking.track_link_type', t.track_link_type, trackTypes()) + '</div></div>'
+    + sel('tracking.track_link_type', t.track_link_type, trackTypes(), { after:'openGenerate();' }) + '</div></div>'
     + '</div>'
-    /* Math Random：三列表格，四行固定 key + 可新增 custom 行 */
-    + '<div class="sec"><div class="sh">Math Random</div><div class="sb" style="padding:0">'
-    + '<table class="t"><thead><tr><th style="width:170px">Key</th>'
-    + '<th>Value</th><th class="ct" style="width:84px">Action</th></tr></thead><tbody>'
-    + Object.keys(randDims()).map(dimRow).join('')
-    + (t.rand_custom || []).map(cusRow).join('')
-    + '</tbody></table>'
-    + '<div class="row" style="margin:8px 10px 10px"><button class="btn sm" onclick="addRandCustom()">+ Add Custom</button>'
-    + '<span class="small gray">填入候选值的行才参与生成</span></div>'
-    + (rows.length ? '<div class="pv" style="margin:0 10px 10px">'
-        + esc(rows.map((r) => (r.key + '').padEnd(10, ' ') + '= ' + randExpr(r.vals)).join('\n')) + '</div>' : '')
-    + '</div></div>'
+    /* 选定 Third Party + Track Link Type 后，load 出这一组合将要补全 / 替换的参数 */
+    + paramPlanTable()
+    /* Add adjust event：仅 Adjust 展示，据输入构建 event callback */
+    + (t.third_party === 'adjust' ? adjEventTable() : '')
+    /* Math Random：评审要求默认收起，点击才展开 */
+    + '<div class="sec"><div class="sh">'
+    + '<a onclick="openRand=!openRand;openGenerate()">Math Random ' + (openRand ? '▴' : '▾') + '</a>'
+    + '<span class="small gray" style="font-weight:400">' + (rows.length ? rows.length + ' 行将参与生成' : '未填候选值') + '</span></div>'
+    + (openRand
+      ? '<div class="sb" style="padding:0">'
+        + '<table class="t"><thead><tr><th style="width:170px">Key</th>'
+        + '<th>Value</th><th class="ct" style="width:84px">Action</th></tr></thead><tbody>'
+        + Object.keys(randDims()).map(dimRow).join('')
+        + (t.rand_custom || []).map(cusRow).join('')
+        + '</tbody></table>'
+        + '<div class="row" style="margin:8px 10px 10px"><button class="btn sm" onclick="addRandCustom()">+ Add Custom</button>'
+        + '<span class="small gray">填入候选值的行才参与生成</span></div>'
+        + (rows.length ? '<div class="pv" style="margin:0 10px 10px">'
+            + esc(rows.map((r) => (r.key + '').padEnd(10, ' ') + '= ' + randExpr(r.vals)).join('\n')) + '</div>' : '')
+        + '</div>' : '')
+    + '</div>'
     + '</div></div>'
     + '</div><div class="f"><button class="btn" onclick="closeLayer()">Cancel</button>'
     + '<button class="btn pri" onclick="runGenerate()">Generate &amp; Apply</button></div></div></div>';
+}
+/* ---- Add adjust event：每行 event_token + event_name，两者齐全才构建 callback ---- */
+function addAdjEvent() {
+  form.tracking.adj_events.push({ token:'', name:'' });
+  openGenerate();
+}
+function setAdjEvent(i, f, v) {
+  const r = form.tracking.adj_events[i];
+  if (r) { r[f] = String(v || '').trim(); openGenerate(); }
+}
+function delAdjEvent(i) {
+  const list = form.tracking.adj_events;
+  if (list.length <= 1) return toast('Keep at least one row', 'warn');
+  list.splice(i, 1); openGenerate();
+}
+/* 有效行：token 与 name 必须同时填写，否则该行不生成 callback */
+const adjEventRows = () => (form.tracking.adj_events || []).filter((r) => r.token && r.name);
+/* token 填了没填 name（或反之）的半截行，生成时要拦下来 */
+const adjEventHalf = () => (form.tracking.adj_events || []).filter((r) => (!!r.token) !== (!!r.name));
+
+/* 参数计划表：对照 Adv Link 现状，逐个标出将要 Add / Replace / Keep 的参数 */
+function paramPlanTable() {
+  const t = form.tracking;
+  const p = parseLink(t.adv_link);
+  const cur = {};
+  if (p.ok) (p.params || []).forEach((x) => { cur[x.k] = x.v; });
+  const list = reqParams().filter((x) => !x.os || x.os === primaryOS());
+  const host = wantHostOf('click');
+  const plan = list.map((x) => {
+    const have = Object.prototype.hasOwnProperty.call(cur, x.k);
+    /* mode=fill 的参数只要存在就不动；其余要求值与目标一致 */
+    let act = 'add';
+    if (have) act = (x.mode === 'fill' || cur[x.k] === x.v) ? 'keep' : 'replace';
+    return { k:x.k, v:x.v, act:act, now: have ? cur[x.k] : '' };
+  });
+  const nAdd = plan.filter((x) => x.act === 'add').length;
+  const nRep = plan.filter((x) => x.act === 'replace').length;
+  const badge = { add:'<span class="tag o">Add</span>', replace:'<span class="tag o">Replace</span>', keep:'<span class="tag g">Keep</span>' };
+  return '<div class="sec"><div class="sh">Parameters to Complete / Replace'
+    + '<span class="small gray" style="font-weight:400">' + MMPS[t.third_party] + ' + ' + (trackTypes()[t.track_link_type] || t.track_link_type)
+    + '：' + nAdd + ' add / ' + nRep + ' replace / ' + (plan.length - nAdd - nRep) + ' keep</span></div>'
+    + '<div class="sb" style="padding:0">'
+    + (host ? '<div class="tip">Host must be <span class="mono">' + esc(host) + '</span>'
+        + (p.ok && p.host && p.host !== host ? '，当前 Adv Link 是 <span class="mono">' + esc(p.host) + '</span>，生成时会替换' : '') + '</div>' : '')
+    + '<table class="t"><thead><tr><th style="width:190px">Parameter</th><th>Target Value</th>'
+    + '<th style="width:88px" class="ct">Action</th></tr></thead><tbody>'
+    + plan.map((x) => '<tr><td class="mono small">' + esc(x.k) + '</td>'
+        + '<td class="mono small brk">' + esc(x.v.length > 150 ? x.v.slice(0, 150) + '…' : x.v)
+        + (x.act === 'replace' ? '<div class="small gray">当前：' + esc(String(x.now).slice(0, 60)) + '</div>' : '')
+        + '</td><td class="ct">' + badge[x.act] + '</td></tr>').join('')
+    + '</tbody></table></div></div>';
+}
+/* Add adjust event 表：token + name 齐全的行各构建一条 event callback */
+function adjEventTable() {
+  const list = form.tracking.adj_events || [];
+  const ok = adjEventRows(), half = adjEventHalf();
+  const isGo = /go\.link/.test(form.tracking.adv_link || '');
+  return '<div class="sec"><div class="sh">Add adjust event'
+    + '<span class="small gray" style="font-weight:400">' + ok.length + ' 条 event callback 将写入</span></div>'
+    + '<div class="sb" style="padding:0">'
+    + '<table class="t"><thead><tr><th style="width:230px">event_token</th><th style="width:230px">event_name</th>'
+    + '<th>Parameter to be built</th><th class="ct" style="width:74px">Action</th></tr></thead><tbody>'
+    + list.map((r, i) => '<tr>'
+        + '<td><input type="text" class="mono" placeholder="Adjust event token，如 abc123" value="' + esc(r.token) + '"'
+        + ' onchange="setAdjEvent(' + i + ',\'token\',this.value)"></td>'
+        + '<td><input type="text" class="mono" placeholder="3S 侧 event name，如 af_purchase" value="' + esc(r.name) + '"'
+        + ' onchange="setAdjEvent(' + i + ',\'name\',this.value)"></td>'
+        + '<td class="mono small brk gray">' + (r.token && r.name ? esc(adjEventParam(r.token, isGo)) : '—') + '</td>'
+        + '<td class="ct"><button class="btn lnk" onclick="delAdjEvent(' + i + ')">DEL</button></td></tr>').join('')
+    + '</tbody></table>'
+    + '<div class="row" style="margin:8px 10px 10px"><button class="btn sm" onclick="addAdjEvent()">+ Add Event</button>'
+    + '<span class="small gray">event_token 与 event_name 必须同时填写，否则该行不生成</span></div>'
+    + (half.length ? '<div class="tip err" style="margin:0 10px 10px">有 ' + half.length + ' 行只填了一半，生成时会被拦下</div>' : '')
+    + '</div></div>';
 }
 function runGenerate() {
   const t = form.tracking, a = form.adv, r = MMP_RULES[t.third_party] || {};
@@ -1102,17 +1318,35 @@ function runGenerate() {
     if (randVals(row.raw).length && !(row.key || '').trim()) bad.push('第 ' + (i + 1) + ' 行');
   });
   if (bad.length) return toast('Math Random 自定义行填了候选值但缺 Key：' + bad.join('、'), 'err');
+  /* event_token 与 event_name 必须同时填写，半截行拦下不生成（文档 3.8.2 Event 映射校验） */
+  if (t.third_party === 'adjust' && adjEventHalf().length)
+    return toast('Add adjust event 有 ' + adjEventHalf().length + ' 行只填了 token 或 name，需同时填写', 'err');
+  /* 域名按 Third Party + Track Link Type 的要求纠正（vta 走 impression / view 域名等） */
+  const wantHost = wantHostOf('click');
+  if (wantHost && p.host !== wantHost) p.host = wantHost;
   /* Domain 行替换 host，其余行写到同名参数上 */
   const dm = rows.filter((x) => x.key === 'host')[0];
   if (dm) p.host = randExpr(dm.vals);
   if (!p.path && r.path_rule === 'bundle') p.path = primaryOS() === 'ios' ? ('id' + (a.app_id || '')) : a.package_name;
   const has = {};
   p.params.forEach((x, i) => { has[x.k] = i; });
-  /* 先补齐当前 MMP 的必填参数，已有的不动 */
-  (r.required || []).forEach((x) => {
+  /* 按参数表补全 / 替换：mode=fill 的只在缺失时补，其余要求值与目标一致，不一致就替换 */
+  reqParams().forEach((x) => {
     if (x.os && x.os !== primaryOS()) return;
     if (has[x.k] == null) { p.params.push({ k:x.k, v:x.v }); has[x.k] = p.params.length - 1; }
+    else if (x.mode !== 'fill' && p.params[has[x.k]].v !== x.v) p.params[has[x.k]].v = x.v;
   });
+  /* Adjust：每个填全的 event 行追加一条 event callback（go.link 域名下带 adj_ 前缀） */
+  let nEvt = 0;
+  if (t.third_party === 'adjust') {
+    const isGo = /go\.link/.test(p.host || '');
+    adjEventRows().forEach((e) => {
+      const k = adjEventParam(e.token, isGo), v = adjEventValue(e.name);
+      if (has[k] == null) { p.params.push({ k:k, v:v }); has[k] = p.params.length - 1; }
+      else p.params[has[k]].v = v;
+      nEvt++;
+    });
+  }
   /* 再用随机表达式覆盖：参数已存在则覆盖其值，不存在则追加 */
   rows.forEach((x) => {
     if (x.key === 'host') return;
@@ -1121,9 +1355,11 @@ function runGenerate() {
   });
   /* 拉活单补 is_retargeting，避免报表口径与实际跑法不一致 */
   if (form.basic.is_reactivation === 'rt' && has.is_retargeting == null) p.params.push({ k:'is_retargeting', v:'true' });
+  const prevLink = t.tracking_link;
   t.tracking_link = buildLink(p);
-  pushLog('Tracking Info', 'Tracking Link generated from Adv Link'
-    + (rows.length ? '（Math Random：' + rows.map((x) => x.name + ' ' + x.vals.length + ' 个候选值').join('、') + '）' : ''));
+  pushLog('Tracking Info', 'Tracking Link'
+    + (rows.length ? '（Math Random ' + rows.length + ' 行）' : '')
+    + (nEvt ? '（event callback ' + nEvt + ' 条）' : ''), prevLink, t.tracking_link);
   closeLayer(); render();
   toast('Tracking Link generated and applied; validation runs below');
 }
@@ -1136,7 +1372,7 @@ function toggleAsync(v) {
     if (t.store_link) toast('Store Link auto-filled from the Package Info store link');
     else toast('No store link in Package Info yet; fill Store Link manually', 'warn');
   }
-  pushLog('Tracking Info', 'Async Flow → ' + (v ? 'on' : 'off'));
+  pushLog('Tracking Info', 'Async Flow', v ? 'NO' : 'YES', v ? 'YES' : 'NO');
   render();
 }
 function validateLink(url, kind) {
@@ -1168,12 +1404,12 @@ function validateLink(url, kind) {
       + 'candidates must match what is registered with the MMP, otherwise attribution is dropped');
   });
   const has = new Set(p.params.map((x) => x.k));
-  const missing = (r.required || []).filter((x) => (!x.os || x.os === primaryOS()) && !has.has(x.k)).map((x) => x.k);
+  const missing = reqParams().filter((x) => (!x.os || x.os === primaryOS()) && !has.has(x.k)).map((x) => x.k);
   if (missing.length) push('err', LINK_ERR.missing(missing), 'fill');
   const emptyVals = p.params.filter((x) => x.k && !x.v).map((x) => x.k);
   if (emptyVals.length) push('warn', LINK_ERR.empty_val(emptyVals));
   p.params.forEach((x) => {
-    const def = (r.required || []).concat(r.optional || []).find((y) => y.k === x.k);
+    const def = reqParams().concat(r.optional || []).find((y) => y.k === x.k);
     if (def && def.os && def.os !== primaryOS()) push('warn', LINK_ERR.os_mismatch(x.k, def.os));
   });
   if (t.is_agency && r.agency_param && !has.has(r.agency_param))
@@ -1189,7 +1425,7 @@ function fillMissing(kind) {
   if (!p.ok) return toast('Link cannot be parsed; fix the basic format first', 'err');
   const has = new Set(p.params.map((x) => x.k));
   let n = 0;
-  (r.required || []).forEach((x) => {
+  reqParams().forEach((x) => {
     if (x.os && x.os !== primaryOS()) return;
     if (!has.has(x.k)) { p.params.push({ k:x.k, v:x.v }); n++; }
   });
@@ -1204,14 +1440,14 @@ function renderMacros(url, ctx) {
   MACROS.forEach((x) => {
     let v = x.s;
     if (x.m === '{@info.country@}' && ctx.geo) v = ctx.geo;
-    if (x.m === '{@info.city@}' && ctx.city) v = ctx.city;
+    if (x.m === '{@info.country@}' && ctx.country) v = ctx.country;
     s = s.split(x.m).join(v);
   });
   return s.split('{name}').join(ctx.name || 'OFFER_NAME');
 }
 function classifyParam(k) {
   const r = MMP_RULES[form.tracking.third_party] || {};
-  if ((r.required || []).some((x) => x.k === k)) return 'required';
+  if (reqParams().some((x) => x.k === k)) return 'required';
   if ((r.optional || []).some((x) => x.k === k)) return 'optional';
   return 'custom';
 }
@@ -1279,7 +1515,7 @@ function buildOffer() {
   const ar = advRealPrice(), cp = chnPrice();
   const advCap = capVal(c.adv_conv_cap), chnCap = capVal(c.chn_conv_cap);
   const issues = validateLink(url, 'click');
-  if (chnPriceOn() && !(cp > 0)) issues.push({ level:'err', msg:'Channel payout is empty or not greater than 0' });
+  if (chnPayoutOn() && !(cp > 0)) issues.push({ level:'err', msg:'Channel payout is empty or not greater than 0' });
   if (uuidDup(b.offer_uuid)) issues.push({ level:'err', msg:'Offer UUID ' + b.offer_uuid + ' already exists' });
   if (nameDup(b.offer_name)) issues.push({ level:'err', msg:'Offer Name ' + b.offer_name + ' already exists' });
   if (chnCap != null && advCap != null && +chnCap > +advCap)
@@ -1318,8 +1554,8 @@ function secErrors(k) {
     });
     if (!advShownRows().length) e.push('Set Info needs at least one event');
     const ce = st.chn_events[0] || {};
-    if (chnPriceOn() && !(ce.adv_price > 0)) e.push('Adv Price is required');
-    if (chnPriceOn() && !(chnPrice() > 0)) e.push('Channel Payout is required');
+    if (chnAdvPriceOn() && !(ce.adv_price > 0)) e.push('Adv Price is required');
+    if (chnPayoutOn() && !(chnPrice() > 0)) e.push('Channel Payout is required');
     if (!String(ce.note || '').replace(/<[^>]*>/g, '').trim()) e.push('Note (External) is required');
   }
   if (k === 'cap') {
@@ -1354,6 +1590,7 @@ function secWarns(k) {
    ============================================================ */
 let openPkg = false;       /* Package Info 折叠态，PRD 要求默认收起 */
 let openImp = false;       /* Adv Impression Tracking Link 折叠态：选填，默认收起 */
+let openRand = false;      /* Generate 弹窗里的 Math Random 折叠态：评审要求默认收起 */
 let openMargin = false;    /* Margin-control 折叠态，默认收起 */
 function cardHead(k, name, note, right) {
   const s = SECS.find((x) => x.k === k) || {};
@@ -1446,13 +1683,18 @@ function cardBasic() {
   const nDup = nameDup(b.offer_name), uDup = uuidDup(b.offer_uuid);
   let h = cardHead('basic', 'Basic Info');
 
-  /* Offer Name 与 Offer UUID 各自一个字段，两列并排 */
-  h += '<div class="g2">'
+  /* Offer Name 与 Offer UUID 两列并排，中间一列放双向转换按钮 */
+  h += '<div class="g2" style="grid-template-columns:1.16fr 104px 1fr">'
     + '<div class="fi">' + L('Offer Name', 1) + '<div class="c">'
     + inp('basic.offer_name', b.offer_name, { ph:'按需求命名，一般大写英文' })
     + ii('Globally unique, usually uppercase; differs from Offer UUID only in case and separators')
     + (nDup ? '<div class="tip err">Offer Name already exists</div>' : '')
     + '</div></div>'
+    /* 两字段之间的转换入口：name → uuid 大写转小写、非字母数字转下划线；uuid → name 反推 */
+    + '<div style="display:flex;flex-direction:column;gap:4px;align-items:stretch;padding-top:2px">'
+    + '<button class="btn sm" title="Offer Name → UUID：大写字母转小写，其余字符转下划线" onclick="syncUuid()">Name → UUID</button>'
+    + '<button class="btn sm" title="Offer UUID → Offer Name：下划线转空格并转大写" onclick="syncName()">UUID → Name</button>'
+    + '</div>'
     + '<div class="fi">' + L('Offer UUID', 1) + '<div class="c">'
     + inp('basic.offer_uuid', b.offer_uuid, { cls:'mono', ph:'offer唯一标识，按需求命名，一般小写英文' })
     + ii('Globally unique identifier used to look up the offer')
@@ -1505,7 +1747,7 @@ function cardSettle() {
   let h = cardHead('settle', 'Settlement Info');
 
   /* 上游口径：Channel 选 CPS 时只能配 CPS */
-  h += '<div class="fi">' + L('Adv Set Type', 1) + '<div class="c">'
+  h += '<div class="fi">' + L('Adv Set Type<br><span class="small gray" style="font-weight:400">即 origin revenue basic</span>', 1) + '<div class="c">'
     + chkLock('settle.adv_settle_type', a, SETTLE_TYPES, c === 'cps' ? ['cpi', 'cpe'] : []) + '</div></div>';
 
   /* Adv 侧 Set Info 表：CPS 时第二列是 Settlement Rate */
@@ -1546,13 +1788,13 @@ function cardSettle() {
     + (showDel ? '<div class="row" style="margin-top:8px"><button class="btn sm" onclick="addSetRow()">+ Add Event</button></div>' : '');
 
   /* 下游口径：CPS 仅在上游也是 CPS 时可选 */
-  h += '<div class="fi" style="margin-top:14px">' + L('Channel Set Type', 1) + '<div class="c">'
+  h += '<div class="fi" style="margin-top:14px">' + L('Channel Set Type<br><span class="small gray" style="font-weight:400">即 pricing model</span>', 1) + '<div class="c">'
     + chkLock('settle.chn_settle_type', c, CHN_SETTLE_TYPES, [], a === 'cps' ? ['cpi'] : ['cps']) + '</div></div>';
 
   /* Channel 侧 Set Info 表：固定一行，event 随上表联动 */
-  const payOn = chnPriceOn();
+  const advPOn = chnAdvPriceOn(), payOn = chnPayoutOn();
   h += '<table class="t" style="margin-top:6px"><thead><tr><th style="width:210px">' + (c === 'cpi' ? '' : rq) + 'Event Name</th>'
-    + '<th class="ct" style="width:130px">' + (payOn ? rq : '') + 'Adv Price</th>'
+    + '<th class="ct" style="width:130px">' + (advPOn ? rq : '') + 'Adv Price</th>'
     + '<th class="ct" style="width:150px">' + (payOn ? rq : '') + 'Channel Payout</th>'
     + '<th>' + rq + 'Note (External)</th></tr></thead><tbody>'
     + s.chn_events.map((e, i) => '<tr style="background:#f4f9ff">'
@@ -1560,7 +1802,7 @@ function cardSettle() {
             : '<select onchange="form.settle.chn_events[' + i + '].name=this.value;render()">'
               + chnEventOpts().map((x) => '<option value="' + esc(x.name) + '" ' + (e.name === x.name ? 'selected' : '') + '>' + esc(x.name) + '</option>').join('')
               + '</select>') + '</td>'
-        + '<td class="ct">' + (payOn
+        + '<td class="ct">' + (advPOn
             ? '<input type="number" step="0.001" placeholder="' + numPh + '" value="' + (e.adv_price == null ? '' : e.adv_price) + '"'
               + ' oninput="form.settle.chn_events[' + i + '].adv_price=this.value===\'\'?null:+this.value;render()">' : dash) + '</td>'
         + '<td class="ct">' + (payOn
@@ -1612,7 +1854,7 @@ function renameEvent(i, v) {
 }
 function addSetRow() {
   form.settle.adv_events.push({ name:'af_new_event', real:null, match:'uniq', window:'7d' });
-  pushLog('Settlement Info', 'Set Info: event added');
+  pushLog('Settlement Info', 'Adv Set Info — Event Name', '', 'af_new_event');
   render();
 }
 function delSetRow(i) {
@@ -1622,7 +1864,7 @@ function delSetRow(i) {
   if (s.adv_events.filter((x) => x.name !== 'install').length <= 1)
     return toast('Keep at least one event besides install', 'warn');
   s.adv_events.splice(i, 1);
-  pushLog('Settlement Info', 'Set Info: event deleted — ' + (e.name || ''));
+  pushLog('Settlement Info', 'Adv Set Info — Event Name', e.name || '', '');
   render();
 }
 
@@ -1942,16 +2184,63 @@ function cardIntegration() {
 
 
 /* 变更日志：offer 维度所有模块的改动集合 */
+/* 变更日志弹窗：文档 3.11 要求六列、分页展示、支持导出 */
 function openLog() {
+  const total = LOGS.length;
+  const pages = Math.max(1, Math.ceil(total / LOG_PAGE_SIZE));
+  if (logPage > pages - 1) logPage = pages - 1;
+  if (logPage < 0) logPage = 0;
+  const from = logPage * LOG_PAGE_SIZE;
+  const page = LOGS.slice(from, from + LOG_PAGE_SIZE);
+  /* Before / After 可能是一整条 tracking link，列表里截断，完整值挂 title */
+  const cell = (v) => {
+    const sv = String(v == null ? '' : v);
+    if (!sv) return '<span class="gray">—</span>';
+    return '<span title="' + esc(sv) + '">' + esc(sv.length > 46 ? sv.slice(0, 46) + '…' : sv) + '</span>';
+  };
   $('#layer').innerHTML = '<div class="mask" onclick="if(event.target===this)closeLayer()"><div class="dlg w960">'
     + '<div class="h">Offer Change Log<a onclick="closeLayer()">×</a></div><div class="b">'
-    + '<p class="small gray">All changes made to this offer across modules. The prototype only records actions from the current session.</p>'
-    + '<table class="t" style="margin-top:10px"><thead><tr><th style="width:130px">Time</th><th style="width:130px">Operator</th>'
-    + '<th style="width:150px">Module</th><th>Change</th></tr></thead><tbody>'
-    + (LOGS.length ? LOGS.map((x) => '<tr><td class="small mono">' + esc(x.t) + '</td><td class="small">' + esc(x.who) + '</td>'
-        + '<td><span class="tag gray">' + esc(x.sec) + '</span></td><td class="small">' + esc(x.msg) + '</td></tr>').join('')
-      : '<tr><td colspan="4" class="gray small">No changes yet</td></tr>')
-    + '</tbody></table></div><div class="f"><button class="btn" onclick="closeLayer()">Close</button></div></div></div>';
+    + '<div class="row" style="justify-content:space-between">'
+    + '<span class="small gray">All changes made to this offer across modules. The prototype only records actions from the current session.</span>'
+    + '<button class="btn sm" onclick="exportLogs()">Export CSV</button></div>'
+    + '<table class="t" style="margin-top:10px"><thead><tr>'
+    + '<th style="width:142px">Time</th><th style="width:118px">Operator</th><th style="width:120px">Module</th>'
+    + '<th style="width:150px">Field</th><th>Before</th><th>After</th></tr></thead><tbody>'
+    + (page.length ? page.map((x) => '<tr><td class="small mono">' + esc(x.t) + '</td>'
+        + '<td class="small">' + esc(x.who) + '</td>'
+        + '<td><span class="tag gray">' + esc(x.sec) + '</span></td>'
+        + '<td class="small">' + esc(x.field || '') + '</td>'
+        + '<td class="small mono brk">' + cell(x.before) + '</td>'
+        + '<td class="small mono brk">' + cell(x.after) + '</td></tr>').join('')
+      : '<tr><td colspan="6" class="gray small">No changes yet</td></tr>')
+    + '</tbody></table>'
+    + '<div class="row" style="margin-top:10px;justify-content:space-between">'
+    + '<span class="small gray">' + total + ' records'
+    + (total ? '，showing ' + (from + 1) + '-' + (from + page.length) : '') + '</span>'
+    + '<span class="row" style="gap:6px">'
+    + '<button class="btn sm" ' + (logPage <= 0 ? 'disabled' : '') + ' onclick="logTurn(-1)">Prev</button>'
+    + '<span class="small gray">' + (logPage + 1) + ' / ' + pages + '</span>'
+    + '<button class="btn sm" ' + (logPage >= pages - 1 ? 'disabled' : '') + ' onclick="logTurn(1)">Next</button>'
+    + '</span></div>'
+    + '</div><div class="f"><button class="btn" onclick="closeLayer()">Close</button></div></div></div>';
+}
+function logTurn(d) { logPage += d; openLog(); }
+/* 导出：原型里直接生成 CSV 下载，带 BOM 以便 Excel 正确识别中文 */
+function exportLogs() {
+  const head = ['Time', 'Operator', 'Module', 'Field', 'Before', 'After'];
+  const q = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const csv = [head.join(',')].concat(
+    LOGS.map((x) => [x.t, x.who, x.sec, x.field, x.before, x.after].map(q).join(','))).join('\r\n');
+  try {
+    const blob = new Blob(['\ufeff' + csv], { type:'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'offer_change_log_' + (form.basic.offer_uuid || 'offer') + '.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('Exported ' + LOGS.length + ' records');
+  } catch (e) { toast('Export is not available in this environment', 'err'); }
 }
 
 /* ============================================================
@@ -2022,7 +2311,7 @@ function doCreate() {
         '<div class="tip ' + (x.level === 'err' ? 'err' : 'warn') + '">' + esc(x.msg) + '</div>').join('') + '</div>' : ''),
     () => {
       closeLayer();
-      pushLog('Create Offer', 'Offer created: ' + o.uuid);
+      pushLog('Create Offer', 'Offer', '', o.uuid);
       $('#layer').innerHTML = '<div class="mask"><div class="dlg"><div class="h">Result<a onclick="closeLayer()">×</a></div><div class="b">'
         + '<div class="row"><span class="tag g">Created</span><b class="mono">' + esc(o.uuid) + '</b></div>'
         + '<div class="row small gray" style="margin-top:6px">Offer ID 3119805 · ' + esc(o.name) + '</div>'
@@ -2058,6 +2347,14 @@ function render() {
   $('#main').innerHTML = cardAdv() + cardBasic() + cardSettle() + cardCap() + cardTarget()
     + cardTracking() + cardCreative() + cardIntegration();
   renderNav(); renderFoot();
+  applyIndeterminate();
+}
+/* 复选框的半选态只能用 JS 设置，每次重绘后统一回填 */
+function applyIndeterminate() {
+  try {
+    const list = document.querySelectorAll('input[type="checkbox"][data-ind="1"]');
+    for (let i = 0; i < list.length; i++) list[i].indeterminate = true;
+  } catch (e) { /* 无头校验环境没有完整 DOM，忽略 */ }
 }
 render();
 </script>
