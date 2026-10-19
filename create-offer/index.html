@@ -1229,7 +1229,7 @@ function openGenerate() {
     /* Math Random：评审要求默认收起，点击才展开 */
     + '<div class="sec"><div class="sh">'
     + '<a onclick="openRand=!openRand;openGenerate()">Math Random ' + (openRand ? '▴' : '▾') + '</a>'
-    + '<span class="small gray" style="font-weight:400">' + (rows.length ? rows.length + ' 行将参与生成' : '未填候选值') + '</span></div>'
+    + '</div>'
     + (openRand
       ? '<div class="sb" style="padding:0">'
         + '<table class="t"><thead><tr><th style="width:170px">Key</th>'
@@ -1299,7 +1299,7 @@ function adjEventTable() {
   const ok = adjEventRows(), half = adjEventHalf();
   const isGo = /go\.link/.test(form.tracking.adv_link || '');
   return '<div class="sec"><div class="sh">Add adjust event'
-    + '<span class="small gray" style="font-weight:400">' + ok.length + ' 条 event callback 将写入</span></div>'
+    + '</div>'
     + '<div class="sb" style="padding:0">'
     + '<table class="t"><thead><tr><th style="width:230px">event_token</th><th style="width:230px">event_name</th>'
     + '<th>Parameter to be built</th><th class="ct" style="width:74px">Action</th></tr></thead><tbody>'
@@ -1311,8 +1311,7 @@ function adjEventTable() {
         + '<td class="mono small brk gray">' + (r.token && r.name ? esc(adjEventParam(r.token, isGo)) : '—') + '</td>'
         + '<td class="ct"><button class="btn lnk" onclick="delAdjEvent(' + i + ')">DEL</button></td></tr>').join('')
     + '</tbody></table>'
-    + '<div class="row" style="margin:8px 10px 10px"><button class="btn sm" onclick="addAdjEvent()">+ Add Event</button>'
-    + '<span class="small gray">event_token 与 event_name 必须同时填写，否则该行不生成</span></div>'
+    + '<div class="row" style="margin:8px 10px 10px"><button class="btn sm" onclick="addAdjEvent()">+ Add Event</button></div>'
     + (half.length ? '<div class="tip err" style="margin:0 10px 10px">有 ' + half.length + ' 行只填了一半，生成时会被拦下</div>' : '')
     + '</div></div>';
 }
@@ -1696,22 +1695,14 @@ function cardBasic() {
   /* Offer Name 与 Offer UUID 两列并排，列宽与下一行一致，保证 Offer UUID 与 Budget type 同一起点
      双向转换按钮收进 Offer Name 字段内部，不单独占一列 */
   h += '<div class="g2">'
-    + '<div class="fi">' + L('Offer Name', 1) + '<div class="c"><div class="row">'
-    + '<span style="flex:1">' + inp('basic.offer_name', b.offer_name, { ph:'按需求命名，一般大写英文' }) + '</span>'
-    /* 由对侧字段反推本字段：Offer Name 侧的 Auto 从 UUID 推出 Name */
-    + '<button class="btn sm lt" style="white-space:nowrap" title="由 Offer UUID 反推 Offer Name：下划线转空格并转大写"'
-    + ' onclick="syncName()">Auto</button>'
+    + '<div class="fi">' + L('Offer Name', 1) + '<div class="c">'
+    + inp('basic.offer_name', b.offer_name, { ph:'按需求命名，一般大写英文' })
     + ii('Globally unique, usually uppercase; differs from Offer UUID only in case and separators')
-    + '</div>'
     + (nDup ? '<div class="tip err">Offer Name already exists</div>' : '')
     + '</div></div>'
-    + '<div class="fi">' + L('Offer UUID', 1) + '<div class="c"><div class="row">'
-    + '<span style="flex:1">' + inp('basic.offer_uuid', b.offer_uuid, { cls:'mono', ph:'offer唯一标识，按需求命名，一般小写英文' }) + '</span>'
-    /* Offer UUID 侧的 Auto 从 Name 生成 UUID：大写转小写、其余字符转下划线 */
-    + '<button class="btn sm lt" style="white-space:nowrap" title="由 Offer Name 生成 Offer UUID：大写字母转小写、其余字符转下划线"'
-    + ' onclick="syncUuid()">Auto</button>'
+    + '<div class="fi">' + L('Offer UUID', 1) + '<div class="c">'
+    + inp('basic.offer_uuid', b.offer_uuid, { cls:'mono', ph:'offer唯一标识，按需求命名，一般小写英文' })
     + ii('Globally unique identifier used to look up the offer')
-    + '</div>'
     + (uDup ? '<div class="tip err">Offer UUID already exists</div>' : '')
     + '</div></div>'
     + '</div>'
@@ -2057,7 +2048,7 @@ function cardTracking() {
   /* 展示监测是选填项，默认收起，点一下再展开 */
   h += '<div class="row" style="margin:0 0 14px">'
     + '<button class="btn sm" onclick="openImp=!openImp;render()">'
-    + (openImp ? 'Hide Adv Impression Tracking Link ▴' : 'Configure Adv Impression Tracking Link ▾') + '</button>'
+    + (openImp ? 'Hide Other Link ▴' : 'Configure Other Link ▾') + '</button>'
     + '</div>'
     + (openImp ? linkBlock('view') : '');
   return h + '</div></div>';
@@ -2083,26 +2074,25 @@ function linkBlock(kind) {
   return h + '</div></div>';
 }
 function paramTable(kind, p) {
-  /* 一张表统一展示解析出来的参数：参数 / 值 / 含义 / 删除
-     3.8.3 微调：首行固定 Domain 不可删，编辑失焦后重新解析，命中校验在 Description 列红字提示 */
-  const hostNote = /[\s\n]/.test(p.host) ? '存在换行符/空格' : '';
+  /* 一张表统一展示解析出来的参数：参数 / 值 / Note / 删除
+     Note 列只在占位符 {} 不完整时给红字提示，其余情况留空 */
+  const KEEP_NOTE = '占位符 {} 不完整';
   let h = '<div class="sec" style="margin-top:10px"><div class="sh">Parse &amp; Identify</div><div class="sb" style="padding:0">'
     + '<table class="t"><thead><tr><th style="width:190px">Parameter</th><th>Value</th>'
-    + '<th style="width:230px">Description</th><th style="width:60px">Delete</th></tr></thead><tbody>'
-    + '<tr class="' + (hostNote ? 'bad' : '') + '"><td><span class="mono">Domain</span></td>'
+    + '<th style="width:230px">Note</th><th style="width:60px">Delete</th></tr></thead><tbody>'
+    + '<tr><td><span class="mono">Domain</span></td>'
     + '<td><input type="text" class="mono" value="' + esc(p.host) + '" onchange="setHost(\'' + kind + '\',this.value)"></td>'
-    + '<td class="small' + (hostNote ? ' err' : '') + '">' + esc(hostNote || '链接域名，由所选 Third Party 决定') + '</td>'
+    + '<td class="small"></td>'
     + '<td class="ct gray">—</td></tr>'
     + p.params.map((x, i) => {
         const cls = classifyParam(x.k);
-        const note = paramNote(x, p, i);
-        const md = MACROS.find((m) => m.m === x.v);
-        const desc = PARAM_DESC[x.k] || (md ? md.d : '自定义参数，3S 原样透传');
+        /* 只保留占位符不完整这一类提示，其余（参数含义、其他校验）都不展示 */
+        const note = paramNote(x, p, i) === KEEP_NOTE ? KEEP_NOTE : '';
         return '<tr class="' + (note ? 'bad' : '') + '">'
           + '<td>' + (cls === 'required' ? '<span class="mono">' + esc(x.k) + '</span>'
               : '<input type="text" class="mono" value="' + esc(x.k) + '" onchange="setParam(\'' + kind + '\',' + i + ',\'k\',this.value)">') + '</td>'
           + '<td><input type="text" class="mono" value="' + esc(x.v) + '" onchange="setParam(\'' + kind + '\',' + i + ',\'v\',this.value)"></td>'
-          + '<td class="small' + (note ? ' err' : '') + '">' + esc(note || desc) + '</td>'
+          + '<td class="small' + (note ? ' err' : '') + '">' + esc(note) + '</td>'
           + '<td class="ct"><a title="Delete this parameter" onclick="delParam(\'' + kind + '\',' + i + ')">🗑</a></td></tr>';
       }).join('')
     + '</tbody></table></div></div>'
@@ -2176,22 +2166,6 @@ function cardIntegration() {
     + '<label class="chk"><input type="checkbox" ' + (g.auto_channel ? '' : 'checked')
     + ' onchange="setv(\'integration.auto_channel\',0);render()">否</label>'
     + '</div></div></div>';
-  if (g.auto_channel) {
-    /* 渠道名写死仅展示，两个 cap 可编辑，设置值带入自动对接 */
-    h += '<div class="sec"><div class="sh">Auto Integration Channels</div><div class="sb">'
-      + '<div class="fi">' + L('Channel') + '<div class="c">'
-      + '<span class="tag gray mono">' + esc(g.auto_channel_name) + '</span></div></div>'
-      + '<div class="fi">' + L('click cap') + '<div class="c"><div class="row">'
-      + '<span style="width:150px">' + inp('integration.click_cap', g.click_cap, { type:'number' }) + '</span>'
-      + '<span class="small gray" style="white-space:nowrap">clicks / day</span></div></div></div>'
-      + '<div class="fi">' + L('channel cap') + '<div class="c"><div class="row">'
-      + '<span style="width:150px">' + inp('integration.channel_cap', g.channel_cap, { type:'number' }) + '</span>'
-      + '<span class="small gray" style="white-space:nowrap">conversions / day</span></div></div></div>'
-      + '<div class="tip">设置的 ' + esc(g.auto_channel_name) + ' cap 值会带入自动对接；默认值待产品确认</div>'
-      + '</div></div>';
-  } else {
-    h += '<div class="tip">选「否」时同当前逻辑，仅自动对接 abc</div>';
-  }
   return h + '</div></div>';
 }
 
@@ -2328,11 +2302,8 @@ function doCreate() {
       $('#layer').innerHTML = '<div class="mask"><div class="dlg"><div class="h">Result<a onclick="closeLayer()">×</a></div><div class="b">'
         + '<div class="row"><span class="tag g">Created</span><b class="mono">' + esc(o.uuid) + '</b></div>'
         + '<div class="row small gray" style="margin-top:6px">Offer ID 3119805 · ' + esc(o.name) + '</div>'
-        + (form.integration.auto_channel
-            ? '<div class="tip">Auto integration on: ' + esc(form.integration.auto_channel_name)
-              + '，click cap = ' + form.integration.click_cap + '，channel cap = ' + form.integration.channel_cap
-              + '. Continue in Delivery to configure scaling.</div>'
-            : '<div class="tip">Auto integration off: 仅自动对接 abc（同当前逻辑）</div>')
+        + '<div class="tip">Auto integration ' + (form.integration.auto_channel ? 'on' : 'off')
+          + '. Continue in Delivery to configure scaling.</div>'
         + '<div class="tip">Prototype only: the real build calls the create API and surfaces failures with a retry.</div>'
         + '</div><div class="f"><button class="btn" onclick="closeLayer()">Done</button>'
         + '<button class="btn pri" onclick="closeLayer();toast(\'Prototype only: jump to Delivery settings\')">Go to Delivery</button></div></div></div>';
