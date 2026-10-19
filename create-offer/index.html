@@ -231,48 +231,52 @@ const CITY_ALIAS = [
 
 
 /* ---------- Tracking Link 宏表 ---------- */
-/* 支持的占位符 / 宏：严格取自需求文档 3.8.3 marco 弹窗的清单。
+/* 支持的占位符 / 宏：严格取自需求文档 3.8.3 marco 弹窗的清单（21 条）。
+   m=占位符，d=含义，af=AF / Adjust 常用参数，s=原型预览用样例值。
    参数值只允许用这里的宏或写死值，其余一律在保存时拦截 */
 const MACROS = [
-  { m:'{@info.clickid@}',          d:'3s 的 clickid',                                   s:'c8f3a91b2d47' },
-  { m:'{@info.extend_clickid()@}', d:'配置非 mv pid 时 clickid 使用此 marco',            s:'c8f3a91b2d47_ext' },
-  { m:'{@info.extend_clickid@}',   d:'扩展 clickid（在系统 clickid 上附加扩展信息）',      s:'c8f3a91b2d47_ext' },
-  { m:'{@info.query_idfa()@}',     d:'渠道上报的设备 id',                                s:'AEBE52E7-03EE-455A-B3C4-E57283966239' },
-  { m:'{@info.query_idfa ()@}',    d:'同上，括号前多一个空格的写法，文档建议统一',          s:'AEBE52E7-03EE-455A-B3C4-E57283966239' },
-  { m:'{@info.sub_channel@}',      d:'Delivery 功能中设置的 mob 号',                      s:'mob2da6aa35c5' },
-  { m:'{@info.campaign.name@}',    d:'当前 offer uuid',                                  s:'domino_star_and_13' },
-  { m:'{@info.args.campaign_id@}', d:'当前 offer id',                                    s:'3119805' },
-  { m:'{@info.channel_id@}',       d:'渠道 id',                                          s:'chn_a1b2c3' },
-  { m:'{@info.subid@}',            d:'渠道上报的 subid',                                 s:'sub_7781' },
-  { m:'{@info.args.adv_install_real_price@}', d:'adv settlement type=install 时，取 offer 的 adv install real price', s:'0.7' },
-  { m:'{@info.ip@}',               d:'设备 ip',                                          s:'103.28.114.9' },
-  { m:'{@info.country@}',          d:'点击 geo',                                         s:'br' },
-  { m:'{@info.country.toUpperCase()@}', d:'国家代码大写',                                s:'BR' },
-  { m:'{@info.ua@}',               d:'User Agent 原值（未编码）',                         s:'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)' },
-  { m:'{@encodeURIComponent(info.ua)@}', d:'User agent（URL 编码后）',                   s:'Mozilla%2F5.0%20(iPhone...)' },
-  { m:'{@info.args.ua_os_version@}', d:'ua 里的 os 版本',                                s:'17.0.3' },
-  { m:'{@info.query.mb_os_version@}', d:'版本号',                                        s:'13' },
-  { m:'{@info.query_lang()@}',     d:'系统语言 en-US',                                   s:'en-US' },
-  { m:'{@info.creative_name3@}',   d:'需在 Delivery 功能中开启透传，取 offer 的 creative name', s:'cr_0731_a', real:1 },
-  { m:'{@info.creative_name@}',    d:'素材名称（配合素材透传功能使用）',                   s:'cr_0731_a', real:1 },
-  { m:'{@info.mb_package_v3()@}',  d:'需开启透传功能，透传包名',                          s:'com.neptune.domino', real:1 },
-  { m:'{@info.theme_name3@}',      d:'透传包名',                                         s:'theme_0731_a', real:1 },
-  { m:'{@info.query.mb_package@}', d:'渠道上报的包名',                                   s:'com.neptune.domino' },
-  { m:'{@info.query.aid@}',        d:'从 URL query 参数获取 aid（Android 设备标识）',      s:'a1b2c3d4e5f6' },
-  { m:'{@info.args.idfv@}',        d:'idfv',                                             s:'C9A1E8F0-1234-4A5B-8C7D-0E1F2A3B4C5D' },
-  { m:'{@info.query.mb_idfv@}',    d:'从 URL query 获取 mb_idfv（iOS IDFV 设备标识）',     s:'C9A1E8F0-1234-4A5B-8C7D-0E1F2A3B4C5D' },
-  { m:'{@info.args.imei@}',        d:'IMEI 设备号',                                      s:'352099001761481' },
-  { m:'{@info.appsflyerid@}',      d:'AppsFlyer 用户唯一标识（AppsFlyer ID）',             s:'1690000000000-1234567' },
-  { m:'{@info.change_c()@}',       d:'需开启 Delivery Strategy Management 功能中相关设置',  s:'2026091916', real:1 },
-  { m:'{@info.change_c_ymd()@}',   d:'需开启 Delivery Strategy Management 功能中相关设置',  s:'20260919', real:1 },
-  { m:'{@info.change_pid()@}',     d:'需开启 Delivery Strategy Management 功能中相关设置',  s:'pid_0912', real:1 },
-  { m:'{@info.random_pid()@}',     d:'随机 PID，用于「禁用 PID」动作时随机取用列表中的 PID 上报', s:'pid_rand_07', real:1 },
-  { m:'{@info.random_pid ()@}',    d:'同上，括号前多一个空格的写法，文档建议统一',          s:'pid_rand_07', real:1 },
-  { m:'{@info.query_arg_md5("mb_tagid")@}', d:'对 URL 参数 mb_tagid 的值做 MD5 加密后传出', s:'9e107d9d372bb682' },
-  { m:'{@info.query_arg("bid_rsp_id")@}',   d:'从 URL 参数获取 bid_rsp_id（竞价响应 ID）',  s:'bid_88123' },
-  { m:'{@encodeURIComponent(info.query.mb_creative?info.query.mb_creative:\'\')@}', d:'取 URL 参数 mb_creative（素材名），为空则传空字符串，并做 URL 编码', s:'cr_0731_a' },
-  { m:'{@encodeURIComponent(info.ua_detail.os.toString().split(\' \')[1]?info.ua_detail.os.toString().split(\' \')[1]:\'\')@}', d:'从 UA 解析 OS 版本号，空则传空字符串，并做 URL 编码', s:'17.0.3' },
-  { m:'__e__f__fp__',              d:'外部渠道传入的指纹 / 占位参数（非 3S 内置宏，透传外部原值）', s:'fp_ab12cd34' },
+  { m:'{@info.clickid@}',          d:'3s的clickid',
+    af:'AppsFlyer：clickid',                                      s:'c8f3a91b2d47' },
+  { m:'{@info.extend_clickid()@}', d:'配置非mv pid时clickid使用此marco',
+    af:'AppsFlyer：clickid',                                      s:'c8f3a91b2d47_ext' },
+  { m:'{@info.query_idfa()@}',     d:'渠道上报的设备id',
+    af:'AppsFlyer：idfa / advertising_id；<br>Adjust：idfa / gps_adid', s:'AEBE52E7-03EE-455A-B3C4-E57283966239' },
+  { m:'{@info.sub_channel@}',      d:'Delivery功能中设置的mob号',
+    af:'AppsFlyer：af_siteid<br>Adjust：adgroup',                 s:'mob2da6aa35c5' },
+  { m:'{@info.campaign.name@}',    d:'当前offer uuid',
+    af:'',                                                        s:'domino_star_and_13' },
+  { m:'{@info.args.campaign_id@}', d:'当前offer id',
+    af:'AppsFlyer：af_c_id',                                      s:'3119805' },
+  { m:'{@info.channel_id@}',       d:'渠道id',
+    af:'',                                                        s:'chn_a1b2c3' },
+  { m:'{@info.args.adv_install_real_price@}', d:'adv settlement type=install时，取Offer中的adv install real price值',
+    af:'',                                                        s:'0.7' },
+  { m:'{@info.query_lang()@}',     d:'系统语言en-US',
+    af:'',                                                        s:'en-US' },
+  { m:'{@info.ua@}',               d:'User Agent',
+    af:'',                                                        s:'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)' },
+  { m:'{@info.args.idfv@}',        d:'idfv',
+    af:'',                                                        s:'C9A1E8F0-1234-4A5B-8C7D-0E1F2A3B4C5D' },
+  { m:'{@info.ip@}',               d:'设备ip',
+    af:'',                                                        s:'103.28.114.9' },
+  { m:'{@info.subid@}',            d:'渠道上报的subid',
+    af:'',                                                        s:'sub_7781' },
+  { m:'{@info.creative_name3@}',   d:'需在Delivery功能中开启透传，取offer的creative name',
+    af:'',                                                        s:'cr_0731_a' },
+  { m:'{@info.theme_name3@}',      d:'需在Delivery功能中开启透传，取offer creative的Description',
+    af:'',                                                        s:'creative_desc_01' },
+  { m:'{@info.mb_package_v3()@}',  d:'需在Delivery功能中开启透传，取对应设置包名透传',
+    af:'',                                                        s:'com.neptune.domino' },
+  { m:'{@info.change_c()@}',       d:'需开启Delivery Strategy Management功能中相关设置，自动更换C参为YYYYMMDDHH',
+    af:'写入c参中',                                                s:'2026101918' },
+  { m:'{@info.change_c_ymd()@}',   d:'需开启Delivery Strategy Management功能中相关设置，自动更换C参为YYYYMMDD',
+    af:'',                                                        s:'20261019' },
+  { m:'{@info.random_pid()@}',     d:'需开启Delivery Strategy Management功能中相关设置，随机取用列表中的 PID 上报',
+    af:'',                                                        s:'pid_rand_07' },
+  { m:'{@info.change_pid()@}',     d:'需开启Delivery Strategy Management功能中相关设置，随机取用列表中的 PID 上报',
+    af:'',                                                        s:'pid_0912' },
+  { m:'{@info.query.mb_package@}', d:'渠道上报的包名',
+    af:'',                                                        s:'com.neptune.domino' },
 ];
 const MACRO_SET = new Set(MACROS.map(x => x.m));
 
@@ -1447,10 +1451,7 @@ function renderMacros(url, ctx) {
   ctx = ctx || {};
   let s = String(url || '');
   MACROS.forEach((x) => {
-    let v = x.s;
-    if (x.m === '{@info.country@}' && ctx.geo) v = ctx.geo;
-    if (x.m === '{@info.country@}' && ctx.country) v = ctx.country;
-    s = s.split(x.m).join(v);
+    s = s.split(x.m).join(x.s);
   });
   return s.split('{name}').join(ctx.name || 'OFFER_NAME');
 }
@@ -2125,10 +2126,12 @@ function openMacroDoc() {
   $('#layer2').innerHTML = '<div class="mask" style="z-index:140" onclick="if(event.target===this)closeLayer2()"><div class="dlg w960">'
     + '<div class="h">Supported Macros<a onclick="closeLayer2()">×</a></div><div class="b">'
     + '<p class="small gray">Parameter values may only use the macros below or hardcoded values; anything else is blocked on save.</p>'
-    + '<table class="t" style="margin-top:10px"><thead><tr><th style="width:230px">Macro</th><th>Description</th><th style="width:220px">Sample</th></tr></thead><tbody>'
-    + MACROS.map((x) => '<tr><td class="mono">' + esc(x.m) + (x.real ? ' <span class="tag g">live</span>' : '') + '</td>'
-        + '<td class="small">' + esc(x.d) + '</td><td class="mono small gray">' + esc(x.s) + '</td></tr>').join('')
-    + '</tbody></table><div class="tip warn">Rows tagged “live” come from the current 3S config; the rest are prototype samples and need to be checked against the 3S macro list.</div>'
+    + '<table class="t" style="margin-top:10px"><thead><tr><th style="width:250px">占位符 / marco</th>'
+    + '<th>含义，将会替换为什么</th><th style="width:230px">af / adj 常用参数</th></tr></thead><tbody>'
+    + MACROS.map((x) => '<tr><td class="mono small brk">' + esc(x.m) + '</td>'
+        + '<td class="small">' + esc(x.d) + '</td>'
+        + '<td class="small">' + (x.af || '<span class="gray">—</span>') + '</td></tr>').join('')
+    + '</tbody></table><div class="tip">共 ' + MACROS.length + ' 个，取自需求文档 3.8.3 marco 弹窗</div>'
     + '</div><div class="f"><button class="btn" onclick="closeLayer2()">Close</button></div></div></div>';
 }
 
